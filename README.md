@@ -1,381 +1,150 @@
-## Executive Summary
+# Design Studio AI
 
-### Vision
+> An AI-powered design workspace that generates, organizes, versions, and reuses every design artifact — from user flows and wireframes to UI screens and assets — so product designers spend less time managing files and more time designing.
 
-Build an AI-powered Product Design Studio that transforms product ideas into complete design projects while automatically organizing, versioning, and reusing every artifact created throughout the process.
-
-Unlike existing tools that focus only on UI generation, the platform manages the entire design lifecycle—from idea exploration to asset management—ensuring that design knowledge, assets, and decisions remain connected and reusable.
+> **Status:** 📋 Proposal — direction approved in principle, full implementation plan pending sign-off. The repo currently contains scaffolding only ([see Roadmap](./ROADMAP.md)).
 
 ---
 
-## Problem
+## Vision
 
-Today's product design workflow is fragmented:
+Build an AI-powered Product Design Studio that turns product ideas into complete design projects while automatically organizing, versioning, and reusing every artifact created along the way.
 
-**Idea → Miro → Figma → Midjourney → Icon Libraries → Google Drive → Notion**
+Unlike tools that focus only on UI generation, the platform manages the **entire design lifecycle** — from idea exploration to asset management — keeping design knowledge, assets, and decisions connected and reusable.
 
-Design artifacts become scattered across multiple tools, causing:
+## The Problem
 
-* Lost design context
-* Duplicate asset creation
-* Poor discoverability
-* Difficult handoffs
-* Weak version tracking
-* Repetitive designer work
+Today's design workflow is fragmented across tools:
 
-Designers spend significant time managing files and assets rather than designing.
-
----
-
-## Solution
-
-An AI Product Design Studio that combines:
-
-### 1. AI Design Generation
-
-Transform ideas into:
-
-* User Flows
-* Wireframes
-* Design Systems
-* UI Screens
-* Design Assets
-
-  * Images
-  * Icons
-  * Illustrations
-  * Audio
-
-### 2. Design Workflow Intelligence
-
-Every artifact is automatically linked.
-
-```text
-Idea
- ↓
-User Flow
- ↓
-Wireframe
- ↓
-Design System
- ↓
-UI Screens
- ↓
-Assets
+```
+Idea → Miro → Figma → Midjourney → Icon Libraries → Google Drive → Notion
 ```
 
-The system understands relationships between all artifacts and maintains design context.
+Artifacts scatter across these tools, causing:
 
-### 3. Asset Management Layer
+- Lost design context
+- Duplicate asset creation
+- Poor discoverability
+- Difficult handoffs
+- Weak version tracking
+- Repetitive, manual work
 
-Automatically:
+Designers spend significant time managing files instead of designing.
 
-* Tag assets
-* Categorize assets
-* Link assets to screens
-* Link assets to projects
-* Store reusable components
-* Enable semantic search
+## The Solution
 
----
+An AI Product Design Studio combining three layers:
 
-# Target Users
+**1. AI Design Generation** — turn ideas into user flows, wireframes, design systems, UI screens, and assets (images, icons, illustrations, audio).
 
-### Primary User
+**2. Workflow Intelligence** — every artifact is automatically linked, so the system understands relationships and maintains context across the lifecycle:
 
-**Product Designers**
-
-Need a centralized workspace to create, manage, iterate, and reuse design artifacts.
-
-### Secondary Users
-
-* UI Designers
-* UX Designers
-* Startup Founders
-* Design Students
-
----
-
-# Core Differentiation
-
-## Existing Tools
-
-### Stitch
-
-* Generates UI screens
-* Target: General users / non-designers
-
-### Figma
-
-* Design collaboration
-* Manual asset organization
-
-### Canva
-
-* Content creation
-* Limited design workflow intelligence
-
----
-
-## This Product
-
-### AI Design Lifecycle Management
-
-Not just screen generation.
-
-The platform manages:
-
-* Design generation
-* Asset organization
-* Version tracking
-* Design knowledge
-* Reusability
-
-**Positioning:**
-
-> AI Asset & Workflow Management Platform for Product Design Teams
-
----
-
-# Key Features
-
-## Must Have
-
-### AI Design Workflow
-
-Idea → Flow → Wireframe → Design System → UI Screens
-
-### Asset Generation
-
-* Image generation
-* Audio generation
-
-### Reusable Asset Library
-
-Store and reuse:
-
-* Images
-* Icons
-* Components
-* Illustrations
-
-### Version History
-
-Track design evolution across the project.
-
-### Search & Tagging
-
-* Semantic search
-* Auto-tagging
-* Asset filtering
-
----
-
-# Differentiating AI Features
-
-## 1. Design Memory
-
-AI remembers relationships:
-
-```text
-Feature
- ↓
-User Flow
- ↓
-Wireframe
- ↓
-Screen
- ↓
-Assets
+```
+Idea → User Flow → Wireframe → Design System → UI Screens → Assets
 ```
 
-Users can ask:
-
-* Why does this screen exist?
-* Which flow generated this screen?
-* Which assets belong here?
+**3. Asset Management** — auto-tag, categorize, link assets to screens and projects, store reusable components, and enable semantic search.
 
 ---
 
-## 2. Asset Intelligence
+## Key Features
 
-Automatically:
+### Must-have
 
-* Categorize assets
-* Detect duplicates
-* Recommend reuse
-* Connect assets to screens
+- **AI design workflow** — Idea → Flow → Wireframe → Design System → UI Screens
+- **Asset generation** — images and audio
+- **Reusable asset library** — store and reuse images, icons, components, illustrations
+- **Version history** — track design evolution across a project
+- **Search & tagging** — semantic search, auto-tagging, filtering
 
-Example:
+### Differentiating AI features
 
-> "A similar onboarding illustration already exists."
+- **Design Memory** — answer "why does this screen exist?", "which flow generated it?", "which assets belong here?"
+- **Asset Intelligence** — auto-categorize, detect duplicates, recommend reuse (*"a similar onboarding illustration already exists"*)
+- **Version Intelligence** — AI summaries of what changed between versions, with rationale
+- **Auto-generate missing states** — given a success state, generate error / empty / loading / offline states
+- **Asset Lineage Graph** *(stretch)* — visual graph tracing artifact origins and dependencies
+
+### Nice-to-have
+
+- Collaboration (team workspaces, shared libraries, review workflows)
+- Video generation (keyframes, simple animations, motion design)
 
 ---
 
-## 3. Version Intelligence
+## Architecture
 
-Beyond version history.
+| Layer | Choice |
+|---|---|
+| Frontend | React + Vite + TypeScript |
+| Backend | Rust + Axum |
+| Database | PostgreSQL |
+| Vector / RAG store | pgvector |
+| Object storage | AWS S3 |
+| Deployment | Docker → AWS Fargate / ECS |
 
-AI summarizes changes:
+### Retrieval (RAG)
 
-```text
-v4 Summary
+Several AI features are retrieval-augmented, not pure generation: **semantic search**, **duplicate detection**, **reuse recommendations**, **Design Memory**, and **Version Intelligence** all retrieve relevant context before the model responds. `pgvector` is the retrieval store.
 
-- Signup flow reduced from 5 steps to 3
-- Navigation simplified
-- 12 deprecated assets removed
+Because assets are largely *visual*, "find a similar illustration" relies on **multimodal embeddings** (image + text), not text alone. Embedding model selection and pgvector index strategy (HNSW vs IVFFlat) are addressed in the implementation plan.
+
+### Security & reliability
+
+- **Auth** — workspace-based access control
+- **Rate limiting** — per workspace / user / IP
+- **Bot protection** — Cloudflare Turnstile
+- **Privacy** — PDPA compliance
+- **AI reliability** — timeout recovery, model-failure handling, input validation, retries, graceful degradation
+
+---
+
+## Getting Started
+
+**Prerequisites:** Rust (stable), Node.js 20+, Docker + Docker Compose.
+
+```bash
+# 1. Configure environment
+cp .env.example .env        # fill in API keys / S3 creds as needed
+
+# 2. Start Postgres + pgvector
+docker compose up -d        # DB on localhost:5432, extensions auto-enabled
+
+# 3. Backend (http://localhost:8080)
+cd backend && cargo run     # GET /health → {"status":"ok"}
+
+# 4. Frontend (http://localhost:5173)
+cd frontend && npm install && npm run dev
 ```
 
-Provides rationale and historical context.
+## Project Structure
 
----
-
-## 4. Auto-Generate Missing States
-
-Designers often forget repetitive screens.
-
-Given:
-
-* Success state
-
-AI generates:
-
-* Error state
-* Empty state
-* Loading state
-* Offline state
-
-This saves substantial design time.
-
----
-
-## 5. Asset Lineage Graph (Stretch Goal)
-
-Visual graph showing relationships:
-
-```text
-Idea
- ├─ User Flow
- │   ├─ Wireframe
- │   │   ├─ Screen A
- │   │   └─ Screen B
- │
- └─ Assets
-     ├─ Icon Set
-     └─ Illustrations
+```
+design-studio-ai/
+├── backend/                # Rust + Axum API
+│   ├── src/main.rs         # entrypoint (/health, CORS, tracing)
+│   ├── Cargo.toml
+│   └── rust-toolchain.toml # pinned to stable
+├── frontend/               # React + Vite + TypeScript
+├── infra/
+│   └── db/init/            # Postgres init (enables vector, uuid-ossp)
+├── docker-compose.yml      # Postgres 16 + pgvector
+├── .env.example
+├── ROADMAP.md              # phased delivery plan
+└── README.md
 ```
 
-Allows designers to trace artifact origins and dependencies.
+## Roadmap
+
+See [ROADMAP.md](./ROADMAP.md) for the phased delivery plan and current status.
 
 ---
 
-# Nice-to-Have Features
+## Target Users
 
-### Collaboration
+- **Primary:** Product Designers — a centralized workspace to create, manage, iterate, and reuse design artifacts.
+- **Secondary:** UI/UX Designers, startup founders, design students.
 
-* Team workspace
-* Shared libraries
-* Review workflows
+## Positioning
 
-### Video Generation
-
-* Generate keyframes
-* Produce simple animations
-* Motion design support
-
-### Asset Lineage Graph
-
-Visual artifact dependency graph.
-
----
-
-# Technical Architecture
-
-## Frontend
-
-* React ✅ (recommended)
-* Alternative: Leptos
-
-## Backend
-
-* Rust + Axum
-
-## Database
-
-* PostgreSQL
-
-## Semantic Search
-
-* pgvector
-
-## Storage
-
-* AWS S3
-
-## Deployment
-
-### Initial
-
-* Docker
-* AWS Fargate
-
-### Scaling
-
-* AWS ECS
-
----
-
-# Security & Reliability
-
-### Authentication
-
-Workspace-based access control
-
-### Rate Limiting
-
-Per:
-
-* Workspace
-* User
-* IP
-
-### Bot Protection
-
-Cloudflare Turnstile
-
-### Privacy
-
-PDPA compliance
-
-### AI Reliability
-
-Production-grade fail-safe handling:
-
-* Timeout recovery
-* Model failures
-* Invalid inputs
-* Retry strategies
-* Graceful degradation
-
----
-
-
-### Infrastructure
-
-✅ Deployed on AWS
-
-### Quality
-
-✅ Production-ready UX
-
-✅ Error handling
-
-✅ AI fail-safe mechanisms
-
-✅ Persistent storage
-
----
-
-# One-Sentence Pitch
-
-> An AI-powered design workspace that generates, organizes, versions, and reuses every design artifact—from user flows and wireframes to UI screens and assets—so product designers spend less time managing files and more time designing.
+> AI Asset & Workflow Management Platform for Product Design Teams — not just screen generation.
