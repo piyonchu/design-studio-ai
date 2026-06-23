@@ -1,0 +1,19 @@
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Rust
+/backend/target
+**/*.rs.bk
+
+# Node / frontend
+node_modules/
+/frontend/dist
+/frontend/.vite
+
+# OS / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
