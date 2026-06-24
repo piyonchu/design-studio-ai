@@ -29,15 +29,17 @@ The data model and access layer everything else depends on.
 - 🚧 Rate limiting + Turnstile bot protection *(landed: per-IP global + stricter auth tier via tower_governor; Turnstile verify on signup/login with dev bypass. Per-user/workspace quotas deferred to Phase 3)*
 - ⏳ AI reliability scaffolding: timeouts, retries, graceful degradation
 
-## Phase 2 — Artifact Lifecycle ⏳
+## Phase 2 — Artifact Lifecycle 🚧
 
 The linked workflow that is the product's core differentiator.
 
-- ⏳ Idea → Flow → Wireframe → Design System → UI Screens pipeline
-- ⏳ UI-as-Code DSL tree + AI patch loop (LLM returns patched JSON)
+- 🚧 Idea → Flow → Wireframe → Design System → UI Screens pipeline *(generate-from-parent landed; full guided pipeline pending)*
+- 🚧 UI-as-Code DSL tree + AI patch loop *(landed: typed DSL + `validate`, Anthropic client (reqwest, opus-4-8, adaptive thinking, retry/backoff, AI_MOCK dev mode), `POST …/generate` + `POST /artifacts/:id/ai-edit`)*
 - ⏳ WebSocket canvas sync (tldraw / xyflow ↔ backend patches)
-- ⏳ Automatic artifact linking (Design Memory relationships persisted)
-- ⏳ Version snapshots per edit, with action/prompt metadata
+- 🚧 Automatic artifact linking *(generate records `derived_from` edges; richer Design-Memory relationships pending)*
+- 🚧 Version snapshots per edit, with action/prompt metadata *(AI edits append immutable versions with `change_source='ai'` + prompt)*
+
+Also delivered the deferred Phase 1 **AI-reliability scaffolding** (timeouts, retries, graceful 503 degradation) here, since the LLM client now exists.
 
 ## Phase 3 — AI Generation ⏳
 

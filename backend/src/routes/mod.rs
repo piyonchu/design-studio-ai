@@ -1,3 +1,4 @@
+mod ai;
 mod artifacts;
 mod auth;
 mod projects;
@@ -15,4 +16,5 @@ pub fn router() -> Router<AppState> {
         .merge(workspaces::router())
         .merge(projects::router())
         .merge(artifacts::router())
+        .merge(ai::router())
 }

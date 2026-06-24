@@ -76,6 +76,24 @@ echo -n "  correct login -> "
 curl -s -o /dev/null -w '%{http_code}\n' -XPOST "$BASE/auth/login" -H 'content-type: application/json' \
   -d "{\"email\":\"$EMAIL_A\",\"password\":\"supersecret\"}"
 
+echo "== AI generate (mock mode) -> user_flow DSL =="
+GEN=$(curl -s -b "$JAR" -XPOST "$BASE/projects/$PID/artifacts/generate" -H 'content-type: application/json' \
+  -d '{"kind":"user_flow","prompt":"3-step signup flow"}')
+GID=$(echo "$GEN" | j '.id')
+echo "$GEN" | jq '{kind, change_source: .head_version.change_source, nodes: (.head_version.content.nodes | length), source_is_ai: (.head_version.change_source=="ai")}'
+
+echo "== AI ai-edit (mock mode) -> appends v2 =="
+EV2=$(curl -s -b "$JAR" -XPOST "$BASE/artifacts/$GID/ai-edit" -H 'content-type: application/json' \
+  -d '{"prompt":"add a password-reset step"}' | j '.id')
+echo "  edit history:"; curl -s -b "$JAR" "$BASE/artifacts/$GID/versions" | jq --arg v2 "$EV2" \
+  '{count: length, newest_is_ai_edit: (.[0].id==$v2 and .[0].change_source=="ai"), v2_parent_is_v1: (.[0].parent_id==.[1].id), v1_root: (.[1].parent_id==null)}'
+
+echo "== AI generate with parent -> derived_from link =="
+DID=$(curl -s -b "$JAR" -XPOST "$BASE/projects/$PID/artifacts/generate" -H 'content-type: application/json' \
+  -d "{\"kind\":\"wireframe\",\"prompt\":\"wireframe for the flow\",\"parent_artifact_id\":\"$GID\"}" | j '.id')
+echo "  links from flow to wireframe:"; curl -s -b "$JAR" "$BASE/artifacts/$GID/links" | jq \
+  --arg d "$DID" '{count: length, links_to_wireframe: (any(.[]; .to_artifact_id==$d))}'
+
 echo "== rate limit: hammer /auth/login -> eventually 429 =="
 GOT_429=0
 for i in $(seq 1 25); do

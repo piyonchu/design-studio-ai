@@ -1,3 +1,4 @@
+mod ai;
 mod auth;
 mod db;
 mod error;
