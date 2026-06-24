@@ -11,8 +11,14 @@ pub enum AppError {
     NotFound,
     /// Caller error (bad input, FK violation) → 400.
     BadRequest(String),
-    /// Unexpected database error → 500.
+    /// Not authenticated → 401.
+    Unauthorized,
+    /// Authenticated but not permitted → 403.
+    Forbidden,
+    /// Unexpected internal error (DB, hashing, …) → 500.
     Db(sqlx::Error),
+    /// Unexpected internal error from a non-sqlx source → 500.
+    Internal(String),
 }
 
 impl std::fmt::Display for AppError {
@@ -20,7 +26,10 @@ impl std::fmt::Display for AppError {
         match self {
             AppError::NotFound => write!(f, "not found"),
             AppError::BadRequest(msg) => write!(f, "{msg}"),
+            AppError::Unauthorized => write!(f, "unauthorized"),
+            AppError::Forbidden => write!(f, "forbidden"),
             AppError::Db(err) => write!(f, "database error: {err}"),
+            AppError::Internal(msg) => write!(f, "internal error: {msg}"),
         }
     }
 }
@@ -46,8 +55,17 @@ impl IntoResponse for AppError {
         let (status, message) = match self {
             AppError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
+            AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden".to_string()),
             AppError::Db(err) => {
                 tracing::error!(%err, "unhandled database error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
+            }
+            AppError::Internal(msg) => {
+                tracing::error!(%msg, "internal error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal server error".to_string(),

@@ -4,8 +4,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use uuid::Uuid;
 
+use crate::auth::{self, AuthUser};
 use crate::error::AppError;
-use crate::models::{CreateProject, Project};
+use crate::models::{CreateProject, Project, WorkspaceRole};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -19,18 +20,12 @@ pub fn router() -> Router<AppState> {
 
 async fn create(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(workspace_id): Path<Uuid>,
     Json(body): Json<CreateProject>,
 ) -> Result<(StatusCode, Json<Project>), AppError> {
-    // Explicit parent check gives a clean 404 instead of a generic FK error.
-    let exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workspaces WHERE id = $1)")
-            .bind(workspace_id)
-            .fetch_one(&state.pool)
-            .await?;
-    if !exists {
-        return Err(AppError::NotFound);
-    }
+    // Must be at least an editor in the target workspace (404 if not a member).
+    auth::require_member(&state.pool, workspace_id, user.id, WorkspaceRole::Editor).await?;
 
     let project = sqlx::query_as::<_, Project>(
         "INSERT INTO projects (workspace_id, name, brief) VALUES ($1, $2, $3)
@@ -46,8 +41,11 @@ async fn create(
 
 async fn list(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(workspace_id): Path<Uuid>,
 ) -> Result<Json<Vec<Project>>, AppError> {
+    auth::require_member(&state.pool, workspace_id, user.id, WorkspaceRole::Viewer).await?;
+
     let rows = sqlx::query_as::<_, Project>(
         "SELECT id, workspace_id, name, brief, created_at
          FROM projects WHERE workspace_id = $1 ORDER BY created_at DESC",
@@ -60,8 +58,11 @@ async fn list(
 
 async fn get_one(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Project>, AppError> {
+    auth::require_project_access(&state.pool, id, user.id, WorkspaceRole::Viewer).await?;
+
     let project = sqlx::query_as::<_, Project>(
         "SELECT id, workspace_id, name, brief, created_at FROM projects WHERE id = $1",
     )

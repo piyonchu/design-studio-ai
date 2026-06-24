@@ -32,6 +32,16 @@ impl Default for ChangeSource {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "workspace_role", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceRole {
+    // Ordered viewer < editor < owner so role comparisons gate write access.
+    Viewer,
+    Editor,
+    Owner,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "link_relation", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
@@ -145,4 +155,42 @@ pub struct ArtifactWithHead {
     #[serde(flatten)]
     pub artifact: Artifact,
     pub head_version: Option<ArtifactVersion>,
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+/// Public user representation — never includes the password hash.
+#[derive(Debug, Serialize, FromRow)]
+pub struct User {
+    pub id: Uuid,
+    pub email: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Internal row for credential verification (carries the hash).
+#[derive(Debug, FromRow)]
+pub struct UserCredentials {
+    pub id: Uuid,
+    pub password_hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SignupRequest {
+    pub email: String,
+    pub password: String,
+    #[serde(default)]
+    pub workspace_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
+/// Signup response: the new user plus the default workspace created for them.
+#[derive(Debug, Serialize)]
+pub struct SignupResponse {
+    pub user: User,
+    pub workspace: Workspace,
 }

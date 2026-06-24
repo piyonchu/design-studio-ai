@@ -24,7 +24,7 @@ The data model and access layer everything else depends on.
 
 - 🚧 Schema + migrations (sqlx): immutable `artifacts`/`artifact_versions` lineage graph (`parent_id`), `artifact_links` pipeline edges, `assets` S3 binding, 3 embedding tables *(landed in `0001_init`)*
 - 🚧 DB pool + migrate-on-boot, DB-backed `/health` *(landed)*
-- ⏳ Workspace-based auth & access control
+- 🚧 Workspace-based auth & access control *(landed: email+password (argon2id), httpOnly session cookies, users + workspace_members roles, AuthUser extractor + role-gated handlers)*
 - 🚧 Core CRUD API for projects and artifacts *(landed: workspaces/projects/artifacts + immutable version append + pipeline links; assets deferred to Phase 3)*
 - ⏳ Rate limiting (workspace / user / IP), Turnstile bot protection
 - ⏳ AI reliability scaffolding: timeouts, retries, graceful degradation

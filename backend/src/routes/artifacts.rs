@@ -4,10 +4,11 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use uuid::Uuid;
 
+use crate::auth::{self, AuthUser};
 use crate::error::AppError;
 use crate::models::{
     Artifact, ArtifactLink, ArtifactVersion, ArtifactWithHead, CreateArtifact, CreateLink,
-    CreateVersion,
+    CreateVersion, WorkspaceRole,
 };
 use crate::AppState;
 
@@ -27,16 +28,11 @@ const VERSION_COLS: &str =
 /// Create an artifact together with its first immutable version, atomically.
 async fn create(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(project_id): Path<Uuid>,
     Json(body): Json<CreateArtifact>,
 ) -> Result<(StatusCode, Json<ArtifactWithHead>), AppError> {
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM projects WHERE id = $1)")
-        .bind(project_id)
-        .fetch_one(&state.pool)
-        .await?;
-    if !exists {
-        return Err(AppError::NotFound);
-    }
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
 
     let mut tx = state.pool.begin().await?;
 
@@ -80,8 +76,11 @@ async fn create(
 
 async fn list(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<Vec<Artifact>>, AppError> {
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
+
     let rows = sqlx::query_as::<_, Artifact>(&format!(
         "SELECT {ARTIFACT_COLS} FROM artifacts WHERE project_id = $1 ORDER BY created_at DESC"
     ))
@@ -93,8 +92,11 @@ async fn list(
 
 async fn get_one(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ArtifactWithHead>, AppError> {
+    auth::require_artifact_access(&state.pool, id, user.id, WorkspaceRole::Viewer).await?;
+
     let artifact = sqlx::query_as::<_, Artifact>(&format!(
         "SELECT {ARTIFACT_COLS} FROM artifacts WHERE id = $1"
     ))
@@ -123,9 +125,12 @@ async fn get_one(
 /// advance the artifact's head pointer. Atomic.
 async fn add_version(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(id): Path<Uuid>,
     Json(body): Json<CreateVersion>,
 ) -> Result<(StatusCode, Json<ArtifactVersion>), AppError> {
+    auth::require_artifact_access(&state.pool, id, user.id, WorkspaceRole::Editor).await?;
+
     let mut tx = state.pool.begin().await?;
 
     // Lock the artifact row so concurrent appends serialize on the head pointer.
@@ -162,8 +167,11 @@ async fn add_version(
 
 async fn list_versions(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<ArtifactVersion>>, AppError> {
+    auth::require_artifact_access(&state.pool, id, user.id, WorkspaceRole::Viewer).await?;
+
     let rows = sqlx::query_as::<_, ArtifactVersion>(&format!(
         "SELECT {VERSION_COLS} FROM artifact_versions WHERE artifact_id = $1 ORDER BY created_at DESC"
     ))
@@ -177,16 +185,15 @@ async fn list_versions(
 /// (from, to, relation) unique edge.
 async fn add_link(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(id): Path<Uuid>,
     Json(body): Json<CreateLink>,
 ) -> Result<(StatusCode, Json<ArtifactLink>), AppError> {
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM artifacts WHERE id = $1)")
-        .bind(id)
-        .fetch_one(&state.pool)
+    // Editor on the source, and at least viewer on the target — so you can't
+    // link into a workspace you can't see.
+    auth::require_artifact_access(&state.pool, id, user.id, WorkspaceRole::Editor).await?;
+    auth::require_artifact_access(&state.pool, body.to_artifact_id, user.id, WorkspaceRole::Viewer)
         .await?;
-    if !exists {
-        return Err(AppError::NotFound);
-    }
 
     let link = sqlx::query_as::<_, ArtifactLink>(
         "INSERT INTO artifact_links (from_artifact_id, to_artifact_id, relation)
@@ -205,8 +212,11 @@ async fn add_link(
 
 async fn list_links(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<ArtifactLink>>, AppError> {
+    auth::require_artifact_access(&state.pool, id, user.id, WorkspaceRole::Viewer).await?;
+
     let rows = sqlx::query_as::<_, ArtifactLink>(
         "SELECT id, from_artifact_id, to_artifact_id, relation, created_at
          FROM artifact_links WHERE from_artifact_id = $1 ORDER BY created_at",
