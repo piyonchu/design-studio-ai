@@ -35,7 +35,8 @@ The linked workflow that is the product's core differentiator.
 
 - 🚧 Idea → Flow → Wireframe → Design System → UI Screens pipeline *(generate-from-parent landed; full guided pipeline pending)*
 - 🚧 UI-as-Code DSL tree + AI patch loop *(landed: typed DSL + `validate`, Anthropic client (reqwest, opus-4-8, adaptive thinking, retry/backoff, AI_MOCK dev mode), `POST …/generate` + `POST /artifacts/:id/ai-edit`)*
-- ⏳ WebSocket canvas sync (tldraw / xyflow ↔ backend patches)
+- 🚧 Frontend foundation *(landed: dark-glassmorphism app shell + auth (login/signup) + Workspace Hub wired to the REST API; React 19 + Vite + Tailwind v4 + Geist + Phosphor; `/api` dev proxy for same-origin cookies)*
+- ⏳ WebSocket canvas sync (tldraw / xyflow ↔ backend patches) — next frontend slice
 - 🚧 Automatic artifact linking *(generate records `derived_from` edges; richer Design-Memory relationships pending)*
 - 🚧 Version snapshots per edit, with action/prompt metadata *(AI edits append immutable versions with `change_source='ai'` + prompt)*
 
