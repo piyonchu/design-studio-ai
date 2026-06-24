@@ -1,4 +1,7 @@
 mod db;
+mod error;
+mod models;
+mod routes;
 
 use std::net::SocketAddr;
 
@@ -8,7 +11,7 @@ use sqlx::postgres::PgPool;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 #[derive(Clone)]
-struct AppState {
+pub struct AppState {
     pool: PgPool,
 }
 
@@ -31,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
+        .merge(routes::router())
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state);
