@@ -47,6 +47,36 @@ export interface Project {
   created_at: string
 }
 
+export type ArtifactKind =
+  | 'idea'
+  | 'user_flow'
+  | 'wireframe'
+  | 'design_system'
+  | 'ui_screen'
+export type ChangeSource = 'manual' | 'ai' | 'import'
+
+export interface Artifact {
+  id: string
+  project_id: string
+  kind: ArtifactKind
+  name: string
+  head_version_id: string | null
+  created_at: string
+}
+export interface ArtifactVersion {
+  id: string
+  artifact_id: string
+  parent_id: string | null
+  content: unknown
+  change_source: ChangeSource
+  change_summary: string | null
+  prompt: string | null
+  created_at: string
+}
+export interface ArtifactWithHead extends Artifact {
+  head_version: ArtifactVersion | null
+}
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export const signup = (email: string, password: string, workspace_name?: string) =>
   request<{ user: User; workspace: Workspace }>('/auth/signup', {
@@ -74,4 +104,37 @@ export const createProject = (workspaceId: string, name: string, brief?: string)
   request<Project>(`/workspaces/${workspaceId}/projects`, {
     method: 'POST',
     body: JSON.stringify({ name, brief }),
+  })
+
+export const getProject = (id: string) => request<Project>(`/projects/${id}`)
+
+// ── Artifacts ─────────────────────────────────────────────────────────────────
+export const listArtifacts = (projectId: string) =>
+  request<Artifact[]>(`/projects/${projectId}/artifacts`)
+
+export const getArtifact = (id: string) =>
+  request<ArtifactWithHead>(`/artifacts/${id}`)
+
+export const generate = (
+  projectId: string,
+  body: { kind: ArtifactKind; prompt: string; parent_artifact_id?: string },
+) =>
+  request<ArtifactWithHead>(`/projects/${projectId}/artifacts/generate`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+
+export const aiEdit = (artifactId: string, prompt: string) =>
+  request<ArtifactVersion>(`/artifacts/${artifactId}/ai-edit`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt }),
+  })
+
+export const addVersion = (
+  artifactId: string,
+  body: { content: unknown; change_source: ChangeSource; change_summary?: string },
+) =>
+  request<ArtifactVersion>(`/artifacts/${artifactId}/versions`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   })

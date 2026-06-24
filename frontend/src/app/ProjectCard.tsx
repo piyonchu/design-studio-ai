@@ -1,10 +1,15 @@
+import { useNavigate } from 'react-router-dom'
 import { SparkleIcon } from '@phosphor-icons/react'
 import type { Project } from '../lib/api'
 import { seededGradient } from '../lib/gradient'
 
 export function ProjectCard({ project }: { project: Project }) {
+  const navigate = useNavigate()
   return (
-    <button className="glass group block w-full overflow-hidden rounded-[16px] text-left transition duration-200 hover:-translate-y-0.5 hover:ring-1 hover:ring-teal/40">
+    <button
+      onClick={() => navigate(`/projects/${project.id}`)}
+      className="glass group block w-full overflow-hidden rounded-[16px] text-left transition duration-200 hover:-translate-y-0.5 hover:ring-1 hover:ring-teal/40"
+    >
       {/* Seeded gradient tile (placeholder for rendered-DSL previews). */}
       <div
         className="relative aspect-[4/3] w-full"
