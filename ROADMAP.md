@@ -18,11 +18,12 @@ Foundational dev environment. Reversible groundwork, no product features.
 - ✅ Postgres 16 + pgvector via Docker Compose (`vector`, `uuid-ossp` enabled)
 - ✅ `.env.example`, `.gitignore`, getting-started docs
 
-## Phase 1 — Foundation ⏳
+## Phase 1 — Foundation 🚧
 
 The data model and access layer everything else depends on.
 
-- ⏳ Schema + migrations (sqlx): workspaces → projects → artifacts → assets, with link/relationship tables
+- 🚧 Schema + migrations (sqlx): immutable `artifacts`/`artifact_versions` lineage graph (`parent_id`), `artifact_links` pipeline edges, `assets` S3 binding, 3 embedding tables *(landed in `0001_init`)*
+- 🚧 DB pool + migrate-on-boot, DB-backed `/health` *(landed)*
 - ⏳ Workspace-based auth & access control
 - ⏳ Core CRUD API for projects and artifacts
 - ⏳ Rate limiting (workspace / user / IP), Turnstile bot protection
@@ -33,8 +34,10 @@ The data model and access layer everything else depends on.
 The linked workflow that is the product's core differentiator.
 
 - ⏳ Idea → Flow → Wireframe → Design System → UI Screens pipeline
+- ⏳ UI-as-Code DSL tree + AI patch loop (LLM returns patched JSON)
+- ⏳ WebSocket canvas sync (tldraw / xyflow ↔ backend patches)
 - ⏳ Automatic artifact linking (Design Memory relationships persisted)
-- ⏳ Version history per artifact
+- ⏳ Version snapshots per edit, with action/prompt metadata
 
 ## Phase 3 — AI Generation ⏳
 
@@ -46,14 +49,13 @@ The linked workflow that is the product's core differentiator.
 
 ## Phase 4 — RAG & Asset Intelligence ⏳
 
-The retrieval-augmented layer (see README → Architecture → Retrieval).
+The retrieval-augmented layer — three embedding pipelines (see [ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-- ⏳ Multimodal embeddings (image + text) for assets and artifacts
-- ⏳ pgvector indexing strategy (HNSW vs IVFFlat) + similarity search
-- ⏳ Semantic search across assets
-- ⏳ Duplicate detection & reuse recommendations
-- ⏳ Auto-tagging & categorization
-- ⏳ Design Memory Q&A ("why does this screen exist?")
+- ⏳ Confirm embedding models + reconcile vector dims (schema currently uses placeholders)
+- ⏳ **Semantic** pipeline: embed briefs/chat/rationales → Design Memory Q&A
+- ⏳ **Visual** pipeline: CLIP/multimodal embeds of assets → duplicate detection on insert
+- ⏳ **Structural** pipeline: JSON layout → markdown → embed → "similar screens"
+- ⏳ Auto-tagging & categorization; reuse recommendations
 
 ## Phase 5 — Version Intelligence ⏳
 
