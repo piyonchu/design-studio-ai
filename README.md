@@ -74,20 +74,29 @@ Idea → User Flow → Wireframe → Design System → UI Screens → Assets
 
 ## Architecture
 
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full decision record (UI-as-Code DSL, immutable versioning, RAG). Summary:
+
 | Layer | Choice |
 |---|---|
-| Frontend | React + Vite + TypeScript |
-| Backend | Rust + Axum |
-| Database | PostgreSQL |
+| Frontend | React + Vite + TypeScript; **tldraw** (canvas), **@xyflow/react** (user-flow graphs) |
+| Backend | Rust + Axum; **REST + WebSockets** (real-time canvas sync) |
+| Database | PostgreSQL (relational + version graph) |
 | Vector / RAG store | pgvector |
 | Object storage | AWS S3 |
+| AI | Anthropic (default) / OpenAI, with prompt caching + sliding context windows |
 | Deployment | Docker → AWS Fargate / ECS |
+
+**UI-as-Code:** structural artifacts (flows, wireframes, screens, design systems) are a JSON/DSL tree — the AI edits *JSON*, never screenshots. **Immutable versioning:** every save/generation is a new snapshot with a `parent_id`, forming a lineage graph.
 
 ### Retrieval (RAG)
 
-Several AI features are retrieval-augmented, not pure generation: **semantic search**, **duplicate detection**, **reuse recommendations**, **Design Memory**, and **Version Intelligence** all retrieve relevant context before the model responds. `pgvector` is the retrieval store.
+Several AI features are retrieval-augmented, not pure generation: **semantic search**, **duplicate detection**, **reuse recommendations**, **Design Memory**, and **Version Intelligence** all retrieve context before the model responds. `pgvector` stores **three distinct embedding types**:
 
-Because assets are largely *visual*, "find a similar illustration" relies on **multimodal embeddings** (image + text), not text alone. Embedding model selection and pgvector index strategy (HNSW vs IVFFlat) are addressed in the implementation plan.
+| Embedding | Source | Powers |
+|---|---|---|
+| **Semantic** (text) | briefs, chat, rationales | "why was this screen created?" |
+| **Visual** (CLIP/multimodal) | binary assets | duplicate detection ("a similar illustration already exists") |
+| **Structural** (text) | JSON layout → markdown | "find structurally similar screens" |
 
 ### Security & reliability
 
@@ -110,8 +119,8 @@ cp .env.example .env        # fill in API keys / S3 creds as needed
 # 2. Start Postgres + pgvector
 docker compose up -d        # DB on localhost:5432, extensions auto-enabled
 
-# 3. Backend (http://localhost:8080)
-cd backend && cargo run     # GET /health → {"status":"ok"}
+# 3. Backend (http://localhost:8080) — applies DB migrations on boot
+cd backend && cargo run     # GET /health → {"status":"ok","db":"ok"}
 
 # 4. Frontend (http://localhost:5173)
 cd frontend && npm install && npm run dev
@@ -123,6 +132,8 @@ cd frontend && npm install && npm run dev
 design-studio-ai/
 ├── backend/                # Rust + Axum API
 │   ├── src/main.rs         # entrypoint (/health, CORS, tracing)
+│   ├── src/db.rs           # PgPool + migrate-on-boot
+│   ├── migrations/         # sqlx migrations (0001_init: schema)
 │   ├── Cargo.toml
 │   └── rust-toolchain.toml # pinned to stable
 ├── frontend/               # React + Vite + TypeScript
@@ -130,6 +141,7 @@ design-studio-ai/
 │   └── db/init/            # Postgres init (enables vector, uuid-ossp)
 ├── docker-compose.yml      # Postgres 16 + pgvector
 ├── .env.example
+├── ARCHITECTURE.md         # core architectural decisions
 ├── ROADMAP.md              # phased delivery plan
 └── README.md
 ```

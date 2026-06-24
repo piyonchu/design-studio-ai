@@ -18,23 +18,31 @@ Foundational dev environment. Reversible groundwork, no product features.
 - ✅ Postgres 16 + pgvector via Docker Compose (`vector`, `uuid-ossp` enabled)
 - ✅ `.env.example`, `.gitignore`, getting-started docs
 
-## Phase 1 — Foundation ⏳
+## Phase 1 — Foundation 🚧
 
 The data model and access layer everything else depends on.
 
-- ⏳ Schema + migrations (sqlx): workspaces → projects → artifacts → assets, with link/relationship tables
-- ⏳ Workspace-based auth & access control
-- ⏳ Core CRUD API for projects and artifacts
-- ⏳ Rate limiting (workspace / user / IP), Turnstile bot protection
+- 🚧 Schema + migrations (sqlx): immutable `artifacts`/`artifact_versions` lineage graph (`parent_id`), `artifact_links` pipeline edges, `assets` S3 binding, 3 embedding tables *(landed in `0001_init`)*
+- 🚧 DB pool + migrate-on-boot, DB-backed `/health` *(landed)*
+- 🚧 Workspace-based auth & access control *(landed: email+password (argon2id), httpOnly session cookies, users + workspace_members roles, AuthUser extractor + role-gated handlers)*
+- 🚧 Core CRUD API for projects and artifacts *(landed: workspaces/projects/artifacts + immutable version append + pipeline links; assets deferred to Phase 3)*
+- 🚧 Rate limiting + Turnstile bot protection *(landed: per-IP global + stricter auth tier via tower_governor; Turnstile verify on signup/login with dev bypass. Per-user/workspace quotas deferred to Phase 3)*
 - ⏳ AI reliability scaffolding: timeouts, retries, graceful degradation
 
-## Phase 2 — Artifact Lifecycle ⏳
+## Phase 2 — Artifact Lifecycle 🚧
 
 The linked workflow that is the product's core differentiator.
 
-- ⏳ Idea → Flow → Wireframe → Design System → UI Screens pipeline
-- ⏳ Automatic artifact linking (Design Memory relationships persisted)
-- ⏳ Version history per artifact
+- 🚧 Idea → Flow → Wireframe → Design System → UI Screens pipeline *(generate-from-parent landed; full guided pipeline pending)*
+- 🚧 UI-as-Code DSL tree + AI patch loop *(landed: typed DSL + `validate`, Anthropic client (reqwest, opus-4-8, adaptive thinking, retry/backoff, AI_MOCK dev mode), `POST …/generate` + `POST /artifacts/:id/ai-edit`)*
+- 🚧 Frontend foundation *(landed: dark-glassmorphism app shell + auth (login/signup) + Workspace Hub wired to the REST API; React 19 + Vite + Tailwind v4 + Geist + Phosphor; `/api` dev proxy for same-origin cookies)*
+- 🚧 Project workspace: **User Flow canvas (xyflow) + AI chat** *(landed: `/projects/:id` with chat panel driving generate/ai-edit, flow rendered as a node graph, REST save→manual version with node positions; matches design-screens/02)*
+- ⏳ Wireframe canvas (tldraw, Screen 3) — next frontend slice
+- ⏳ WebSocket canvas sync (live multi-client patches) — currently REST save→version
+- 🚧 Automatic artifact linking *(generate records `derived_from` edges; richer Design-Memory relationships pending)*
+- 🚧 Version snapshots per edit, with action/prompt metadata *(AI edits append immutable versions with `change_source='ai'` + prompt)*
+
+Also delivered the deferred Phase 1 **AI-reliability scaffolding** (timeouts, retries, graceful 503 degradation) here, since the LLM client now exists.
 
 ## Phase 3 — AI Generation ⏳
 
@@ -46,14 +54,13 @@ The linked workflow that is the product's core differentiator.
 
 ## Phase 4 — RAG & Asset Intelligence ⏳
 
-The retrieval-augmented layer (see README → Architecture → Retrieval).
+The retrieval-augmented layer — three embedding pipelines (see [ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-- ⏳ Multimodal embeddings (image + text) for assets and artifacts
-- ⏳ pgvector indexing strategy (HNSW vs IVFFlat) + similarity search
-- ⏳ Semantic search across assets
-- ⏳ Duplicate detection & reuse recommendations
-- ⏳ Auto-tagging & categorization
-- ⏳ Design Memory Q&A ("why does this screen exist?")
+- ⏳ Confirm embedding models + reconcile vector dims (schema currently uses placeholders)
+- ⏳ **Semantic** pipeline: embed briefs/chat/rationales → Design Memory Q&A
+- ⏳ **Visual** pipeline: CLIP/multimodal embeds of assets → duplicate detection on insert
+- ⏳ **Structural** pipeline: JSON layout → markdown → embed → "similar screens"
+- ⏳ Auto-tagging & categorization; reuse recommendations
 
 ## Phase 5 — Version Intelligence ⏳
 
