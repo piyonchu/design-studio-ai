@@ -8,6 +8,7 @@ use axum::Router;
 use crate::AppState;
 
 /// All API routes, merged into one router shared with the app's `AppState`.
+/// (The stricter auth rate limit is applied inside `auth::router()`.)
 pub fn router() -> Router<AppState> {
     Router::new()
         .merge(auth::router())

@@ -76,4 +76,13 @@ echo -n "  correct login -> "
 curl -s -o /dev/null -w '%{http_code}\n' -XPOST "$BASE/auth/login" -H 'content-type: application/json' \
   -d "{\"email\":\"$EMAIL_A\",\"password\":\"supersecret\"}"
 
+echo "== rate limit: hammer /auth/login -> eventually 429 =="
+GOT_429=0
+for i in $(seq 1 25); do
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' -XPOST "$BASE/auth/login" \
+    -H 'content-type: application/json' -d '{"email":"x@example.com","password":"nope"}')
+  if [ "$CODE" = "429" ]; then GOT_429=1; echo "  tripped 429 after $i requests"; break; fi
+done
+[ "$GOT_429" = "1" ] && echo "  rate limiting OK" || { echo "  FAIL: never got 429"; exit 1; }
+
 echo "DONE"

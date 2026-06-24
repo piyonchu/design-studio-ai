@@ -26,7 +26,7 @@ The data model and access layer everything else depends on.
 - 🚧 DB pool + migrate-on-boot, DB-backed `/health` *(landed)*
 - 🚧 Workspace-based auth & access control *(landed: email+password (argon2id), httpOnly session cookies, users + workspace_members roles, AuthUser extractor + role-gated handlers)*
 - 🚧 Core CRUD API for projects and artifacts *(landed: workspaces/projects/artifacts + immutable version append + pipeline links; assets deferred to Phase 3)*
-- ⏳ Rate limiting (workspace / user / IP), Turnstile bot protection
+- 🚧 Rate limiting + Turnstile bot protection *(landed: per-IP global + stricter auth tier via tower_governor; Turnstile verify on signup/login with dev bypass. Per-user/workspace quotas deferred to Phase 3)*
 - ⏳ AI reliability scaffolding: timeouts, retries, graceful degradation
 
 ## Phase 2 — Artifact Lifecycle ⏳

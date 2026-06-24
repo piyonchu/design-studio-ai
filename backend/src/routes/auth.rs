@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::CookieJar;
+use tower_governor::GovernorLayer;
 
 use crate::auth::{
     self, clear_cookie, create_session, hash_password, session_cookie, verify_password, AuthUser,
@@ -12,20 +13,32 @@ use crate::error::AppError;
 use crate::models::{
     LoginRequest, SignupRequest, SignupResponse, User, UserCredentials, Workspace,
 };
+use crate::ratelimit;
+use crate::turnstile::TurnstileGuard;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
-    Router::new()
+    // Brute-force targets get the stricter per-IP limit (plus Turnstile);
+    // session-bound routes (me/logout) rely on the global limit only.
+    let sensitive = Router::new()
         .route("/auth/signup", post(signup))
         .route("/auth/login", post(login))
+        .layer(GovernorLayer {
+            config: ratelimit::auth_config(),
+        });
+
+    let session = Router::new()
         .route("/auth/logout", post(logout))
-        .route("/auth/me", get(me))
+        .route("/auth/me", get(me));
+
+    sensitive.merge(session)
 }
 
 /// Create a user + a default workspace (caller becomes owner), open a session.
 async fn signup(
     State(state): State<AppState>,
     jar: CookieJar,
+    _guard: TurnstileGuard,
     Json(body): Json<SignupRequest>,
 ) -> Result<(StatusCode, CookieJar, Json<SignupResponse>), AppError> {
     let email = body.email.trim().to_lowercase();
@@ -87,6 +100,7 @@ async fn signup(
 async fn login(
     State(state): State<AppState>,
     jar: CookieJar,
+    _guard: TurnstileGuard,
     Json(body): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<User>), AppError> {
     let email = body.email.trim().to_lowercase();
