@@ -2,34 +2,65 @@ import { useState } from 'react'
 import { MinusIcon, PlusIcon } from '@phosphor-icons/react'
 import { renderElement, type Element } from './renderElement'
 import { resolveFrameSize } from './devices'
+import type { DesignTokens } from '../design/tokens'
 
-const DOT_GRID =
-  'radial-gradient(circle, #2a3142 1px, transparent 1px)'
+const DOT_GRID = 'radial-gradient(circle, #2a3142 1px, transparent 1px)'
 
-export function WireframeCanvas({ root }: { root: Element }) {
+export function WireframeCanvas({
+  root,
+  tokens,
+  hasDesignSystem,
+}: {
+  root: Element
+  tokens: DesignTokens
+  hasDesignSystem: boolean
+}) {
   const [zoom, setZoom] = useState(0.7)
+  const [hifi, setHifi] = useState(false)
   const { w, h } = resolveFrameSize(root.props)
   const clamp = (z: number) => Math.min(1.5, Math.max(0.3, Math.round(z * 100) / 100))
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <div
-        className="absolute inset-0"
-        style={{ backgroundImage: DOT_GRID, backgroundSize: '22px 22px' }}
-      />
+      <div className="absolute inset-0" style={{ backgroundImage: DOT_GRID, backgroundSize: '22px 22px' }} />
 
-      {/* Scaled light device frame, centered, scroll to pan when zoomed in. */}
+      {/* Fidelity toggle */}
+      <div className="glass absolute right-4 top-4 z-10 flex items-center gap-0.5 rounded-full p-1 text-xs">
+        {(['low', 'hi'] as const).map((mode) => {
+          const on = (mode === 'hi') === hifi
+          return (
+            <button
+              key={mode}
+              onClick={() => setHifi(mode === 'hi')}
+              className={`rounded-full px-3 py-1 font-medium transition ${
+                on ? 'bg-white/10 text-text' : 'text-text-dim hover:text-text'
+              }`}
+            >
+              {mode === 'hi' ? 'Hi-fi' : 'Low-fi'}
+            </button>
+          )
+        })}
+      </div>
+      {hifi && !hasDesignSystem && (
+        <p className="glass absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full px-3 py-1.5 text-xs text-text-dim">
+          Using default theme. Generate a Design System to theme this screen.
+        </p>
+      )}
+
+      {/* Scaled device frame */}
       <div className="absolute inset-0 grid place-items-center overflow-auto p-10">
         <div
           style={{
             width: w,
-            minHeight: h, // grows if content is taller than the device height
+            minHeight: h,
             transform: `scale(${zoom})`,
             transformOrigin: 'center',
+            background: hifi ? tokens.colors.bg : '#ffffff',
+            color: hifi ? tokens.colors.text : '#18181b',
           }}
-          className="shrink-0 overflow-hidden rounded-[18px] bg-white text-zinc-900 shadow-[0_24px_80px_rgba(0,0,0,0.5)] ring-1 ring-black/10"
+          className="shrink-0 overflow-hidden rounded-[18px] shadow-[0_24px_80px_rgba(0,0,0,0.5)] ring-1 ring-black/10"
         >
-          {renderElement(root)}
+          {renderElement(root, hifi ? tokens : undefined)}
         </div>
       </div>
 

@@ -10,6 +10,8 @@ import {
   CaretDownIcon,
   FlowArrowIcon,
   BrowsersIcon,
+  PaletteIcon,
+  AppWindowIcon,
 } from '@phosphor-icons/react'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
@@ -18,16 +20,21 @@ import { FlowCanvas } from './flow/FlowCanvas'
 import { flowToDsl, type FlowDsl, type FlowNodeData } from './flow/layout'
 import { WireframeCanvas } from './wireframe/WireframeCanvas'
 import type { Element } from './wireframe/renderElement'
+import { DesignSystemView } from './design/DesignSystemView'
+import { resolveTokens, DEFAULT_TOKENS, type DesignTokens } from './design/tokens'
 
 const KIND_META: Record<string, { label: string; icon: typeof FlowArrowIcon }> = {
   user_flow: { label: 'User Flow', icon: FlowArrowIcon },
   wireframe: { label: 'Wireframe', icon: BrowsersIcon },
-  ui_screen: { label: 'UI Screen', icon: BrowsersIcon },
+  ui_screen: { label: 'UI Screen', icon: AppWindowIcon },
+  design_system: { label: 'Design System', icon: PaletteIcon },
 }
 
 const NEW_KINDS: { kind: api.ArtifactKind; label: string }[] = [
   { kind: 'user_flow', label: 'User Flow' },
   { kind: 'wireframe', label: 'Wireframe' },
+  { kind: 'ui_screen', label: 'UI Screen' },
+  { kind: 'design_system', label: 'Design System' },
 ]
 
 export function ProjectWorkspace() {
@@ -45,6 +52,8 @@ export function ProjectWorkspace() {
   const [saving, setSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
+  const [tokens, setTokens] = useState<DesignTokens>(DEFAULT_TOKENS) // project design system
+  const [hasDS, setHasDS] = useState(false)
 
   const active = artifacts.find((a) => a.id === activeId) ?? null
 
@@ -72,6 +81,14 @@ export function ProjectWorkspace() {
         if (!alive) return
         setProject(proj)
         setArtifacts(list)
+        // Resolve the project's design system (themes hi-fi screens).
+        const ds = list.find((a) => a.kind === 'design_system')
+        if (ds) {
+          const full = await api.getArtifact(ds.id)
+          if (!alive) return
+          setTokens(resolveTokens(full.head_version?.content))
+          setHasDS(true)
+        }
         if (list[0]) {
           setActiveId(list[0].id)
           await loadContent(list[0].id)
@@ -117,6 +134,10 @@ export function ProjectWorkspace() {
       if (active) {
         const version = await api.aiEdit(active.id, prompt)
         setContent(version.content ?? null)
+        if (active.kind === 'design_system') {
+          setTokens(resolveTokens(version.content))
+          setHasDS(true)
+        }
         setMessages((m) => [...m, { role: 'ai', text: 'Updated the design.' }])
       } else {
         const kind = pendingKind ?? 'user_flow'
@@ -125,6 +146,10 @@ export function ProjectWorkspace() {
         setActiveId(created.id)
         setPendingKind(null)
         setContent(created.head_version?.content ?? null)
+        if (kind === 'design_system') {
+          setTokens(resolveTokens(created.head_version?.content))
+          setHasDS(true)
+        }
         setMessages((m) => [...m, { role: 'ai', text: `Created the ${KIND_META[kind]?.label ?? kind}.` }])
       }
       setCanvasKey((k) => k + 1)
@@ -160,6 +185,7 @@ export function ProjectWorkspace() {
 
   const isFlow = active?.kind === 'user_flow'
   const isWireframe = active?.kind === 'wireframe' || active?.kind === 'ui_screen'
+  const isDesignSystem = active?.kind === 'design_system'
   const wireRoot = (content as { root?: Element } | null)?.root
 
   return (
@@ -256,8 +282,15 @@ export function ProjectWorkspace() {
             <ReactFlowProvider>
               <FlowCanvas key={canvasKey} dsl={content as FlowDsl} onGraphChange={onGraphChange} />
             </ReactFlowProvider>
+          ) : isDesignSystem && content ? (
+            <DesignSystemView key={canvasKey} content={content} />
           ) : isWireframe && wireRoot ? (
-            <WireframeCanvas key={canvasKey} root={wireRoot} />
+            <WireframeCanvas
+              key={canvasKey}
+              root={wireRoot}
+              tokens={tokens}
+              hasDesignSystem={hasDS}
+            />
           ) : (
             <div className="grid h-full place-items-center px-6 text-center">
               <p className="max-w-sm text-sm text-text-dim">

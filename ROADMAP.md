@@ -38,8 +38,9 @@ The linked workflow that is the product's core differentiator.
 - 🚧 Frontend foundation *(landed: dark-glassmorphism app shell + auth (login/signup) + Workspace Hub wired to the REST API; React 19 + Vite + Tailwind v4 + Geist + Phosphor; `/api` dev proxy for same-origin cookies)*
 - 🚧 Project workspace: **User Flow canvas (xyflow) + AI chat** *(landed: `/projects/:id` with chat panel driving generate/ai-edit, flow rendered as a node graph, REST save→manual version with node positions; matches design-screens/02)*
 - 🚧 Wireframe canvas *(landed: device-agnostic Element-tree renderer (web/tablet/phone), kind-aware workspace with artifact tabs + New menu, AI generate/edit; matches design-screens/03. tldraw deferred as a future freeform layer)*
+- 🚧 Design System + hi-fi screen theming *(landed: design_system artifact → swatches/type-scale/components view (Screen 4); Low-fi/Hi-fi toggle paints the Element tree with project tokens (Screen 5); ui_screen kind)*
 - ⏳ WebSocket canvas sync (live multi-client patches) — currently REST save→version
-- ⏳ Direct-manipulation wireframe editing + multi-screen layouts + hi-fi theming (Screens 4–5)
+- ⏳ Direct-manipulation editing + multi-screen layouts; asset panel (Screen 6)
 - 🚧 Automatic artifact linking *(generate records `derived_from` edges; richer Design-Memory relationships pending)*
 - 🚧 Version snapshots per edit, with action/prompt metadata *(AI edits append immutable versions with `change_source='ai'` + prompt)*
 
