@@ -1,0 +1,22 @@
+{
+  "name": "Cozy 16-bit Fantasy",
+  "base": {
+    "role": "character",
+    "subject": "a small friendly wizard with a pointed hat, full body, idle pose",
+    "_note": "Used only if no base.png is present — generated first, then derived from."
+  },
+  "style": {
+    "render_style": "16-bit pixel art, retro SNES-era game sprite",
+    "perspective": "side view",
+    "palette": "warm earthy tones, limited ~16 color palette",
+    "outline": "clean 1px dark outline around every shape",
+    "shading": "limited flat shading with light dithering",
+    "composition": "one centered isolated asset, plain transparent background"
+  },
+  "negative": [
+    "no photorealism",
+    "no smooth gradients or soft 3D shading",
+    "no text, labels, or watermark",
+    "no drop shadow"
+  ]
+}

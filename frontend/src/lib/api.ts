@@ -115,21 +115,6 @@ export const listArtifacts = (projectId: string) =>
 export const getArtifact = (id: string) =>
   request<ArtifactWithHead>(`/artifacts/${id}`)
 
-export const generate = (
-  projectId: string,
-  body: { kind: ArtifactKind; prompt: string; parent_artifact_id?: string },
-) =>
-  request<ArtifactWithHead>(`/projects/${projectId}/artifacts/generate`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
-
-export const aiEdit = (artifactId: string, prompt: string) =>
-  request<ArtifactVersion>(`/artifacts/${artifactId}/ai-edit`, {
-    method: 'POST',
-    body: JSON.stringify({ prompt }),
-  })
-
 export const addVersion = (
   artifactId: string,
   body: { content: unknown; change_source: ChangeSource; change_summary?: string },

@@ -1,114 +1,33 @@
-# Design Studio AI
+# CanonForge — AI Game Asset Studio
 
-> An AI-powered design workspace that generates, organizes, versions, and reuses every design artifact — from user flows and wireframes to UI screens and assets — so product designers spend less time managing files and more time designing.
+> An AI asset studio where every generated asset belongs to a versioned **project canon**, is searchable and reusable, is checked for consistency, and exports production-ready. **First vertical: a 2D game asset workflow** — sprites, props, tiles, UI, SFX, and music loops, with Godot/Unity export.
 
-> **Status:** 📋 Proposal — direction approved in principle, full implementation plan pending sign-off. The repo currently contains scaffolding only ([see Roadmap](./ROADMAP.md)).
-
----
-
-## Vision
-
-Build an AI-powered Product Design Studio that turns product ideas into complete design projects while automatically organizing, versioning, and reusing every artifact created along the way.
-
-Unlike tools that focus only on UI generation, the platform manages the **entire design lifecycle** — from idea exploration to asset management — keeping design knowledge, assets, and decisions connected and reusable.
-
-## The Problem
-
-Today's design workflow is fragmented across tools:
-
-```
-Idea → Miro → Figma → Midjourney → Icon Libraries → Google Drive → Notion
-```
-
-Artifacts scatter across these tools, causing:
-
-- Lost design context
-- Duplicate asset creation
-- Poor discoverability
-- Difficult handoffs
-- Weak version tracking
-- Repetitive, manual work
-
-Designers spend significant time managing files instead of designing.
-
-## The Solution
-
-An AI Product Design Studio combining three layers:
-
-**1. AI Design Generation** — turn ideas into user flows, wireframes, design systems, UI screens, and assets (images, icons, illustrations, audio).
-
-**2. Workflow Intelligence** — every artifact is automatically linked, so the system understands relationships and maintains context across the lifecycle:
-
-```
-Idea → User Flow → Wireframe → Design System → UI Screens → Assets
-```
-
-**3. Asset Management** — auto-tag, categorize, link assets to screens and projects, store reusable components, and enable semantic search.
+> **Status:** 🔄 Direction reset. The project pivoted away from an earlier "AI design / UI-generation studio" (which drifted into Figma/v0's lane with no moat) back toward the original brief: an AI tool for a designer's *creative* work — multi-modal asset **generation + management** inside a real workflow. See **[PLAN.md](./PLAN.md)** for the full, current plan.
 
 ---
 
-## Key Features
+## The idea in one loop
 
-### Must-have
+```
+Project brief → Project canon → Generate assets → Review consistency → Organize / reuse → Export
+```
 
-- **AI design workflow** — Idea → Flow → Wireframe → Design System → UI Screens
-- **Asset generation** — images and audio
-- **Reusable asset library** — store and reuse images, icons, components, illustrations
-- **Version history** — track design evolution across a project
-- **Search & tagging** — semantic search, auto-tagging, filtering
+A game asset studio that **remembers your art direction**: define a style/audio canon once, generate sprites/UI/props/SFX/music conditioned on it, catch off-style and duplicate assets automatically, and export an engine-ready pack.
 
-### Differentiating AI features
+**Why it's defensible:** not the raw generation (that's a rented model), but the **project canon** that conditions everything, the **asset graph** with reuse + canon-change propagation, and **engine-ready export** — a niche the big generators (Midjourney/Suno) and the big suites (Adobe/Canva) don't serve.
 
-- **Design Memory** — answer "why does this screen exist?", "which flow generated it?", "which assets belong here?"
-- **Asset Intelligence** — auto-categorize, detect duplicates, recommend reuse (*"a similar onboarding illustration already exists"*)
-- **Version Intelligence** — AI summaries of what changed between versions, with rationale
-- **Auto-generate missing states** — given a success state, generate error / empty / loading / offline states
-- **Asset Lineage Graph** *(stretch)* — visual graph tracing artifact origins and dependencies
+The full rationale, architecture, data model, build sequence, and de-risk spike are in **[PLAN.md](./PLAN.md)**.
 
-### Nice-to-have
+## Current state of the code
 
-- Collaboration (team workspaces, shared libraries, review workflows)
-- Video generation (keyframes, simple animations, motion design)
+The repo already contains reusable platform plumbing from the earlier build, most of which carries over directly to this direction:
 
----
+- **Backend** (Rust + Axum): auth + workspaces, project tenancy, rate limiting, Postgres + pgvector, S3/MinIO object storage with an authed file proxy, an AI provider boundary (image generation via OpenRouter) with mock mode.
+- **Frontend** (React + Vite + TypeScript): app shell, auth, project workspace, asset library panel.
 
-## Architecture
+The UI-generation pieces (flow canvas, wireframe DSL renderer, design-system/hi-fi theming) belong to the abandoned direction and will be removed as the pivot lands. See [PLAN.md §10](./PLAN.md) for what carries over vs. what's net-new.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full decision record (UI-as-Code DSL, immutable versioning, RAG). Summary:
-
-| Layer | Choice |
-|---|---|
-| Frontend | React + Vite + TypeScript; **tldraw** (canvas), **@xyflow/react** (user-flow graphs) |
-| Backend | Rust + Axum; **REST + WebSockets** (real-time canvas sync) |
-| Database | PostgreSQL (relational + version graph) |
-| Vector / RAG store | pgvector |
-| Object storage | AWS S3 |
-| AI | Anthropic (default) / OpenAI, with prompt caching + sliding context windows |
-| Deployment | Docker → AWS Fargate / ECS |
-
-**UI-as-Code:** structural artifacts (flows, wireframes, screens, design systems) are a JSON/DSL tree — the AI edits *JSON*, never screenshots. **Immutable versioning:** every save/generation is a new snapshot with a `parent_id`, forming a lineage graph.
-
-### Retrieval (RAG)
-
-Several AI features are retrieval-augmented, not pure generation: **semantic search**, **duplicate detection**, **reuse recommendations**, **Design Memory**, and **Version Intelligence** all retrieve context before the model responds. `pgvector` stores **three distinct embedding types**:
-
-| Embedding | Source | Powers |
-|---|---|---|
-| **Semantic** (text) | briefs, chat, rationales | "why was this screen created?" |
-| **Visual** (CLIP/multimodal) | binary assets | duplicate detection ("a similar illustration already exists") |
-| **Structural** (text) | JSON layout → markdown | "find structurally similar screens" |
-
-### Security & reliability
-
-- **Auth** — workspace-based access control
-- **Rate limiting** — per workspace / user / IP
-- **Bot protection** — Cloudflare Turnstile
-- **Privacy** — PDPA compliance
-- **AI reliability** — timeout recovery, model-failure handling, input validation, retries, graceful degradation
-
----
-
-## Getting Started
+## Getting started
 
 **Prerequisites:** Rust (stable), Node.js 20+, Docker + Docker Compose.
 
@@ -116,8 +35,8 @@ Several AI features are retrieval-augmented, not pure generation: **semantic sea
 # 1. Configure environment
 cp .env.example .env        # fill in API keys / S3 creds as needed
 
-# 2. Start Postgres + pgvector
-docker compose up -d        # DB on localhost:5432, extensions auto-enabled
+# 2. Start Postgres + pgvector and MinIO (object storage)
+docker compose up -d
 
 # 3. Backend (http://localhost:8080) — applies DB migrations on boot
 cd backend && cargo run     # GET /health → {"status":"ok","db":"ok"}
@@ -126,37 +45,26 @@ cd backend && cargo run     # GET /health → {"status":"ok","db":"ok"}
 cd frontend && npm install && npm run dev
 ```
 
-## Project Structure
+Generation runs in **mock mode by default** (`AI_MOCK=true`, `ASSET_MOCK=true`) so dev needs no API keys or spend. Real generation requires the relevant key in `.env`.
+
+## De-risk first
+
+Before the rewrite, run the **canon-consistency spike** ([`spikes/canon-consistency/`](spikes/canon-consistency/)) — ~8 images, ~$0.30 — to confirm that canon conditioning produces consistent, controllable game assets. Details in [PLAN.md §8](./PLAN.md).
+
+## Repository layout
 
 ```
-design-studio-ai/
-├── backend/                # Rust + Axum API
-│   ├── src/main.rs         # entrypoint (/health, CORS, tracing)
-│   ├── src/db.rs           # PgPool + migrate-on-boot
-│   ├── migrations/         # sqlx migrations (0001_init: schema)
-│   ├── Cargo.toml
-│   └── rust-toolchain.toml # pinned to stable
-├── frontend/               # React + Vite + TypeScript
-├── infra/
-│   └── db/init/            # Postgres init (enables vector, uuid-ossp)
-├── docker-compose.yml      # Postgres 16 + pgvector
-├── .env.example
-├── ARCHITECTURE.md         # core architectural decisions
-├── ROADMAP.md              # phased delivery plan
+.
+├── backend/            # Rust + Axum API (auth, projects, assets, storage, image gen)
+├── frontend/           # React + Vite + TypeScript
+├── infra/db/init/      # Postgres init (vector, uuid-ossp)
+├── spikes/             # throwaway experiments (canon-consistency spike)
+├── design-screens/     # CanonForge UI reference mockups (canonforge-01…06)
+├── docker-compose.yml  # Postgres 16 + pgvector + MinIO
+├── PLAN.md             # ← the current, canonical plan (source of truth)
 └── README.md
 ```
 
-## Roadmap
+## Design reference
 
-See [ROADMAP.md](./ROADMAP.md) for the phased delivery plan and current status.
-
----
-
-## Target Users
-
-- **Primary:** Product Designers — a centralized workspace to create, manage, iterate, and reuse design artifacts.
-- **Secondary:** UI/UX Designers, startup founders, design students.
-
-## Positioning
-
-> AI Asset & Workflow Management Platform for Product Design Teams — not just screen generation.
+Target UI mockups live in [`design-screens/`](design-screens/): asset board, derive slide-over, review & approve, canon studio, project hub, asset inspector. The screen-by-screen UX is in [PLAN.md](./PLAN.md).
