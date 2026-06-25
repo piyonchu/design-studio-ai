@@ -1,0 +1,18 @@
+[
+  {
+    "id": "recolor",
+    "instruction": "Recolor the SAME character into an icy blue winter palette. Keep identical shape, pose, proportions, and outline — only the colors change."
+  },
+  {
+    "id": "walk",
+    "instruction": "Show the SAME character in a mid-walk side stride pose. Keep identical identity, palette, proportions, and art style."
+  },
+  {
+    "id": "attack",
+    "instruction": "Show the SAME character in a dynamic spell-casting / attack pose. Keep identical identity, palette, proportions, and art style."
+  },
+  {
+    "id": "matching",
+    "instruction": "Create a matching enemy: a small goblin, in the EXACT same art style, palette, outline weight, and pixel density as the reference. Different character, same game world."
+  }
+]
