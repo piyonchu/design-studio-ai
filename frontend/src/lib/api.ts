@@ -145,7 +145,8 @@ export interface Asset {
   project_id: string
   screen_id: string | null
   kind: string
-  s3_key: string // image URL / data URL
+  s3_key: string // object-storage key (or data/http URL in inline mode)
+  url: string // stable, browser-usable image URL — use for <img src> / props.src
   mime_type: string | null
   prompt: string | null
   created_at: string

@@ -93,7 +93,7 @@ export function AssetPanel({
           <div className="grid grid-cols-2 gap-2.5">
             {assets.map((a) => (
               <div key={a.id} className="group relative overflow-hidden rounded-[12px] ring-1 ring-white/10">
-                <img src={a.s3_key} alt={a.prompt ?? ''} className="aspect-square w-full object-cover" />
+                <img src={a.url} alt={a.prompt ?? ''} className="aspect-square w-full object-cover" />
                 <button
                   onClick={() => onAttach(a)}
                   disabled={!canAttach}

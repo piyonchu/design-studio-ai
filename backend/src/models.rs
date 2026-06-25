@@ -214,10 +214,17 @@ pub struct Asset {
     pub project_id: Uuid,
     pub screen_id: Option<Uuid>,
     pub kind: AssetKind,
-    pub s3_key: String, // holds the image URL / data URL until real S3 lands
+    /// Object-storage key (S3/MinIO), or a `data:`/`http` URL in inline mode.
+    pub s3_key: String,
     pub mime_type: Option<String>,
     pub prompt: Option<String>,
     pub created_at: DateTime<Utc>,
+    /// Stable, browser-usable URL for the image. Not stored — filled in by the
+    /// route after fetching (see `routes::assets`). For object-stored assets
+    /// this points at `GET /assets/:id/file`; inline assets expose the URL
+    /// directly.
+    #[sqlx(default)]
+    pub url: String,
 }
 
 #[derive(Debug, Deserialize)]

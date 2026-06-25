@@ -39,7 +39,7 @@ The linked workflow that is the product's core differentiator.
 - 🚧 Project workspace: **User Flow canvas (xyflow) + AI chat** *(landed: `/projects/:id` with chat panel driving generate/ai-edit, flow rendered as a node graph, REST save→manual version with node positions; matches design-screens/02)*
 - 🚧 Wireframe canvas *(landed: device-agnostic Element-tree renderer (web/tablet/phone), kind-aware workspace with artifact tabs + New menu, AI generate/edit; matches design-screens/03. tldraw deferred as a future freeform layer)*
 - 🚧 Design System + hi-fi screen theming *(landed: design_system artifact → swatches/type-scale/components view (Screen 4); Low-fi/Hi-fi toggle paints the Element tree with project tokens (Screen 5); ui_screen kind)*
-- 🚧 Asset generation + library panel *(landed: OpenRouter image generation server-side (gemini-2.5-flash-image; ASSET_MOCK placeholder default), assets persisted, Assets drawer with generate + grid + attach-to-screen; matches design-screens/06. S3 storage deferred — URLs/data-URLs stored inline)*
+- 🚧 Asset generation + library panel *(landed: OpenRouter image generation server-side (gemini-2.5-flash-image; ASSET_MOCK on-brand SVG placeholder default), assets persisted to object storage (S3/MinIO) and served via authed proxy, Assets drawer with generate + grid + attach-to-screen; matches design-screens/06)*
 - ⏳ WebSocket canvas sync (live multi-client patches) — currently REST save→version
 - ⏳ Direct-manipulation editing + multi-screen layouts
 - 🚧 Automatic artifact linking *(generate records `derived_from` edges; richer Design-Memory relationships pending)*
@@ -52,7 +52,7 @@ Also delivered the deferred Phase 1 **AI-reliability scaffolding** (timeouts, re
 - 🚧 Text/structured generation (flows, wireframes, design systems) via Claude *(landed in Phase 2)*
 - 🚧 Image generation (illustrations/images) via OpenRouter *(landed; icons/screens-as-images pending)*
 - ⏳ Audio generation
-- ⏳ S3 storage for generated assets *(currently inline URLs / base64 data URLs)*
+- 🚧 S3 storage for generated assets *(landed: object storage via rust-s3, local MinIO in docker compose, bucket auto-created on boot; assets stored under `projects/{id}/assets/{uuid}` and served through authed `GET /assets/:id/file`; inline data-URL fallback when no bucket configured. AWS deploy + presigned-URL CDN path pending)*
 - ⏳ Auto-generate missing states (error / empty / loading / offline from a success state)
 
 ## Phase 4 — RAG & Asset Intelligence ⏳
@@ -84,4 +84,4 @@ Tracked alongside feature phases, hardened before launch.
 - ⏳ Deployed on AWS (Docker → Fargate, scaling on ECS)
 - ⏳ Production-ready UX & error handling
 - ⏳ AI fail-safe mechanisms
-- ⏳ Persistent storage (Postgres + S3)
+- 🚧 Persistent storage (Postgres + S3) *(Postgres landed; S3/MinIO object storage landed for assets — production AWS S3 bucket + lifecycle/CDN pending)*
