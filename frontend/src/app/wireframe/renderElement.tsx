@@ -109,7 +109,8 @@ export function renderElement(el: Element, theme?: DesignTokens, depth = 0): JSX
           {str(p.placeholder) ?? ''}
         </div>
       )
-    case 'image':
+    case 'image': {
+      const src = str(p.src)
       return (
         <div
           key={el.id}
@@ -123,7 +124,10 @@ export function renderElement(el: Element, theme?: DesignTokens, depth = 0): JSX
             border: hifi ? 'none' : '1px solid #d4d4d8',
           }}
         >
-          {!hifi && (
+          {src && (
+            <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          )}
+          {!hifi && !src && (
             <svg className="absolute inset-0 h-full w-full text-zinc-300" preserveAspectRatio="none">
               <line x1="0" y1="0" x2="100%" y2="100%" stroke="currentColor" strokeWidth="1" />
               <line x1="100%" y1="0" x2="0" y2="100%" stroke="currentColor" strokeWidth="1" />
@@ -131,6 +135,7 @@ export function renderElement(el: Element, theme?: DesignTokens, depth = 0): JSX
           )}
         </div>
       )
+    }
     case 'nav':
       return (
         <div key={el.id} className="flex w-full items-center justify-between">

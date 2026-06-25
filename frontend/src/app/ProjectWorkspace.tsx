@@ -12,6 +12,7 @@ import {
   BrowsersIcon,
   PaletteIcon,
   AppWindowIcon,
+  ImagesIcon,
 } from '@phosphor-icons/react'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
@@ -20,6 +21,7 @@ import { FlowCanvas } from './flow/FlowCanvas'
 import { flowToDsl, type FlowDsl, type FlowNodeData } from './flow/layout'
 import { WireframeCanvas } from './wireframe/WireframeCanvas'
 import type { Element } from './wireframe/renderElement'
+import { AssetPanel } from './assets/AssetPanel'
 import { DesignSystemView } from './design/DesignSystemView'
 import { resolveTokens, DEFAULT_TOKENS, type DesignTokens } from './design/tokens'
 
@@ -36,6 +38,23 @@ const NEW_KINDS: { kind: api.ArtifactKind; label: string }[] = [
   { kind: 'ui_screen', label: 'UI Screen' },
   { kind: 'design_system', label: 'Design System' },
 ]
+
+/** Set the first `image` element's src in a screen tree (returns null if none). */
+function setFirstImageSrc(root: Element, src: string): Element | null {
+  const clone = structuredClone(root)
+  let done = false
+  const walk = (el: Element) => {
+    if (done) return
+    if (el.type === 'image') {
+      el.props = { ...(el.props ?? {}), src }
+      done = true
+      return
+    }
+    ;(el.children ?? []).forEach(walk)
+  }
+  walk(clone)
+  return done ? clone : null
+}
 
 export function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -54,6 +73,7 @@ export function ProjectWorkspace() {
   const [newOpen, setNewOpen] = useState(false)
   const [tokens, setTokens] = useState<DesignTokens>(DEFAULT_TOKENS) // project design system
   const [hasDS, setHasDS] = useState(false)
+  const [assetsOpen, setAssetsOpen] = useState(false)
 
   const active = artifacts.find((a) => a.id === activeId) ?? null
 
@@ -183,6 +203,34 @@ export function ProjectWorkspace() {
     }
   }
 
+  async function onAttach(asset: api.Asset) {
+    if (!active || (active.kind !== 'wireframe' && active.kind !== 'ui_screen')) {
+      setError('Open a UI screen to attach an asset.')
+      return
+    }
+    const root = (content as { root?: Element } | null)?.root
+    if (!root) return
+    const newRoot = setFirstImageSrc(root, asset.s3_key)
+    if (!newRoot) {
+      setError('This screen has no image element to attach to.')
+      return
+    }
+    const newContent = { ...(content as object), root: newRoot }
+    try {
+      await api.addVersion(active.id, {
+        content: newContent,
+        change_source: 'manual',
+        change_summary: 'Attach asset',
+      })
+      await api.attachAsset(asset.id, active.id)
+      setContent(newContent)
+      setCanvasKey((k) => k + 1)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to attach asset.')
+    }
+  }
+
   const isFlow = active?.kind === 'user_flow'
   const isWireframe = active?.kind === 'wireframe' || active?.kind === 'ui_screen'
   const isDesignSystem = active?.kind === 'design_system'
@@ -250,22 +298,33 @@ export function ProjectWorkspace() {
           </div>
         </div>
 
-        {isFlow && (
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
-            onClick={onSave}
-            disabled={saving === 'saving'}
-            className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-white/5 px-3.5 py-2 text-sm font-medium text-text transition hover:bg-white/10 disabled:opacity-50"
+            onClick={() => setAssetsOpen((v) => !v)}
+            aria-label="Toggle assets"
+            className={`inline-flex items-center gap-2 rounded-[10px] px-3.5 py-2 text-sm font-medium transition ${
+              assetsOpen ? 'bg-white/10 text-text' : 'bg-white/5 text-text hover:bg-white/10'
+            }`}
           >
-            {saving === 'saving' ? (
-              <SpinnerGapIcon size={15} className="animate-spin" />
-            ) : saving === 'saved' ? (
-              <CheckIcon size={15} className="text-teal-bright" />
-            ) : (
-              <FloppyDiskIcon size={15} />
-            )}
-            {saving === 'saved' ? 'Saved' : 'Save'}
+            <ImagesIcon size={15} /> Assets
           </button>
-        )}
+          {isFlow && (
+            <button
+              onClick={onSave}
+              disabled={saving === 'saving'}
+              className="inline-flex items-center gap-2 rounded-[10px] bg-white/5 px-3.5 py-2 text-sm font-medium text-text transition hover:bg-white/10 disabled:opacity-50"
+            >
+              {saving === 'saving' ? (
+                <SpinnerGapIcon size={15} className="animate-spin" />
+              ) : saving === 'saved' ? (
+                <CheckIcon size={15} className="text-teal-bright" />
+              ) : (
+                <FloppyDiskIcon size={15} />
+              )}
+              {saving === 'saved' ? 'Saved' : 'Save'}
+            </button>
+          )}
+        </div>
       </header>
 
       {error && (
@@ -301,6 +360,15 @@ export function ProjectWorkspace() {
             </div>
           )}
         </div>
+
+        {assetsOpen && projectId && (
+          <AssetPanel
+            projectId={projectId}
+            canAttach={isWireframe && !!wireRoot}
+            onAttach={onAttach}
+            onClose={() => setAssetsOpen(false)}
+          />
+        )}
       </div>
     </div>
   )
