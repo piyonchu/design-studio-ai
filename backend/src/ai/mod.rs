@@ -7,6 +7,7 @@
 //!   - neither              → 503 "AI not configured"
 
 pub mod dsl;
+pub mod images;
 
 use std::sync::OnceLock;
 use std::time::Duration;

@@ -138,3 +138,30 @@ export const addVersion = (
     method: 'POST',
     body: JSON.stringify(body),
   })
+
+// ── Assets ────────────────────────────────────────────────────────────────────
+export interface Asset {
+  id: string
+  project_id: string
+  screen_id: string | null
+  kind: string
+  s3_key: string // image URL / data URL
+  mime_type: string | null
+  prompt: string | null
+  created_at: string
+}
+
+export const listAssets = (projectId: string) =>
+  request<Asset[]>(`/projects/${projectId}/assets`)
+
+export const generateAssets = (projectId: string, prompt: string, count = 1) =>
+  request<Asset[]>(`/projects/${projectId}/assets`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt, count }),
+  })
+
+export const attachAsset = (assetId: string, screenArtifactId: string) =>
+  request<Asset>(`/assets/${assetId}/attach`, {
+    method: 'POST',
+    body: JSON.stringify({ screen_artifact_id: screenArtifactId }),
+  })

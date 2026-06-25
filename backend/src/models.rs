@@ -51,6 +51,17 @@ pub enum LinkRelation {
     Contains,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "asset_kind", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum AssetKind {
+    Image,
+    Icon,
+    Illustration,
+    Audio,
+    Svg,
+}
+
 impl Default for LinkRelation {
     fn default() -> Self {
         LinkRelation::DerivedFrom
@@ -193,4 +204,30 @@ pub struct LoginRequest {
 pub struct SignupResponse {
     pub user: User,
     pub workspace: Workspace,
+}
+
+// ── Assets ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct Asset {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub screen_id: Option<Uuid>,
+    pub kind: AssetKind,
+    pub s3_key: String, // holds the image URL / data URL until real S3 lands
+    pub mime_type: Option<String>,
+    pub prompt: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GenerateAssets {
+    pub prompt: String,
+    #[serde(default)]
+    pub count: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AttachAsset {
+    pub screen_artifact_id: Uuid,
 }

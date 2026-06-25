@@ -88,13 +88,27 @@ pub fn dsl_spec(kind: ArtifactKind) -> &'static str {
   "edges": [{ "from": "n1", "to": "n2", "label": "optional" }] }"#
         }
         ArtifactKind::DesignSystem => {
-            r##"{ "tokens": { "colors": { "primary": "#2563eb" }, "typography": { "body": "16px/1.5 Inter" }, "spacing": { "md": 16 } } }"##
+            r##"{ "tokens": {
+    "colors": { "primary": "#6366f1", "secondary": "#0ea5e9", "accent": "#2dd4bf",
+                "bg": "#0b1020", "surface": "#161b2e", "text": "#e8ecf6", "muted": "#9aa3bd" },
+    "typography": { "font": "Inter", "h1": 40, "h2": 30, "h3": 22, "body": 16, "caption": 13 },
+    "radius": 12,
+    "spacing": { "sm": 8, "md": 16, "lg": 24 }
+  } }
+  // colors are hex; typography sizes are px; radius is px. Choose a cohesive palette for the brief."##
         }
         ArtifactKind::Wireframe | ArtifactKind::UiScreen => {
-            r#"{ "root": { "id": "root", "type": "frame", "props": {}, "children": [
-    { "id": "title", "type": "text", "props": { "text": "Heading" }, "children": [] },
-    { "id": "cta", "type": "button", "props": { "label": "Continue" }, "children": [] }
-  ] } }"#
+            r#"{ "root": { "id": "root", "type": "frame",
+    "props": { "device": "web|desktop|tablet|phone", "direction": "col", "gap": 16, "padding": 24 },
+    "children": [
+      { "id": "title", "type": "text", "props": { "text": "Heading", "size": "lg" }, "children": [] },
+      { "id": "hero", "type": "image", "props": {}, "children": [] },
+      { "id": "email", "type": "input", "props": { "placeholder": "Email" }, "children": [] },
+      { "id": "cta", "type": "button", "props": { "label": "Continue" }, "children": [] }
+    ] } }
+  // Element types: frame (container; props.direction "row"|"col", gap, padding),
+  // text (props.text, size), button (props.label), input (props.placeholder),
+  // image, nav, list. Root frame props.device sets the form factor."#
         }
     }
 }
@@ -116,16 +130,29 @@ pub fn mock_dsl(kind: ArtifactKind, prompt: &str) -> Value {
         }),
         ArtifactKind::DesignSystem => json!({
             "tokens": {
-                "colors": { "primary": "#2563eb", "bg": "#ffffff", "text": "#111827" },
-                "typography": { "body": "16px/1.5 Inter", "heading": "24px/1.3 Inter" },
+                "colors": {
+                    "primary": "#6366f1", "secondary": "#0ea5e9", "accent": "#2dd4bf",
+                    "bg": "#0b1020", "surface": "#161b2e", "text": "#e8ecf6", "muted": "#9aa3bd"
+                },
+                "typography": {
+                    "font": "Inter",
+                    "h1": 40, "h2": 30, "h3": 22, "body": 16, "caption": 13
+                },
+                "radius": 12,
                 "spacing": { "sm": 8, "md": 16, "lg": 24 }
             }
         }),
         ArtifactKind::Wireframe | ArtifactKind::UiScreen => json!({
             "root": {
-                "id": "root", "type": "frame", "props": { "note": prompt }, "children": [
-                    { "id": "title", "type": "text", "props": { "text": "Heading" }, "children": [] },
-                    { "id": "field", "type": "input", "props": { "placeholder": "Email" }, "children": [] },
+                "id": "root", "type": "frame",
+                "props": { "device": "web", "direction": "col", "gap": 16, "padding": 32, "note": prompt },
+                "children": [
+                    { "id": "nav", "type": "nav", "props": { "text": "Logo" }, "children": [] },
+                    { "id": "title", "type": "text", "props": { "text": "Create your account", "size": "lg" }, "children": [] },
+                    { "id": "subtitle", "type": "text", "props": { "text": "Start your 14-day free trial." }, "children": [] },
+                    { "id": "hero", "type": "image", "props": {}, "children": [] },
+                    { "id": "email", "type": "input", "props": { "placeholder": "Email address" }, "children": [] },
+                    { "id": "password", "type": "input", "props": { "placeholder": "Password" }, "children": [] },
                     { "id": "cta", "type": "button", "props": { "label": "Continue" }, "children": [] }
                 ]
             }

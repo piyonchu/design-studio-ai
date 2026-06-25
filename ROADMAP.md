@@ -37,8 +37,11 @@ The linked workflow that is the product's core differentiator.
 - 🚧 UI-as-Code DSL tree + AI patch loop *(landed: typed DSL + `validate`, Anthropic client (reqwest, opus-4-8, adaptive thinking, retry/backoff, AI_MOCK dev mode), `POST …/generate` + `POST /artifacts/:id/ai-edit`)*
 - 🚧 Frontend foundation *(landed: dark-glassmorphism app shell + auth (login/signup) + Workspace Hub wired to the REST API; React 19 + Vite + Tailwind v4 + Geist + Phosphor; `/api` dev proxy for same-origin cookies)*
 - 🚧 Project workspace: **User Flow canvas (xyflow) + AI chat** *(landed: `/projects/:id` with chat panel driving generate/ai-edit, flow rendered as a node graph, REST save→manual version with node positions; matches design-screens/02)*
-- ⏳ Wireframe canvas (tldraw, Screen 3) — next frontend slice
+- 🚧 Wireframe canvas *(landed: device-agnostic Element-tree renderer (web/tablet/phone), kind-aware workspace with artifact tabs + New menu, AI generate/edit; matches design-screens/03. tldraw deferred as a future freeform layer)*
+- 🚧 Design System + hi-fi screen theming *(landed: design_system artifact → swatches/type-scale/components view (Screen 4); Low-fi/Hi-fi toggle paints the Element tree with project tokens (Screen 5); ui_screen kind)*
+- 🚧 Asset generation + library panel *(landed: OpenRouter image generation server-side (gemini-2.5-flash-image; ASSET_MOCK placeholder default), assets persisted, Assets drawer with generate + grid + attach-to-screen; matches design-screens/06. S3 storage deferred — URLs/data-URLs stored inline)*
 - ⏳ WebSocket canvas sync (live multi-client patches) — currently REST save→version
+- ⏳ Direct-manipulation editing + multi-screen layouts
 - 🚧 Automatic artifact linking *(generate records `derived_from` edges; richer Design-Memory relationships pending)*
 - 🚧 Version snapshots per edit, with action/prompt metadata *(AI edits append immutable versions with `change_source='ai'` + prompt)*
 
@@ -46,10 +49,10 @@ Also delivered the deferred Phase 1 **AI-reliability scaffolding** (timeouts, re
 
 ## Phase 3 — AI Generation ⏳
 
-- ⏳ Text/structured generation (flows, wireframes, design systems) via Claude
-- ⏳ Image generation (screens, illustrations, icons)
+- 🚧 Text/structured generation (flows, wireframes, design systems) via Claude *(landed in Phase 2)*
+- 🚧 Image generation (illustrations/images) via OpenRouter *(landed; icons/screens-as-images pending)*
 - ⏳ Audio generation
-- ⏳ S3 storage for generated assets
+- ⏳ S3 storage for generated assets *(currently inline URLs / base64 data URLs)*
 - ⏳ Auto-generate missing states (error / empty / loading / offline from a success state)
 
 ## Phase 4 — RAG & Asset Intelligence ⏳
