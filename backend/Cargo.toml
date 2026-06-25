@@ -25,3 +25,7 @@ time = "0.3"
 tower_governor = "0.4"
 governor = "0.6"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# S3-compatible object storage (AWS S3 / MinIO). rustls (ring) to match the rest
+# of the TLS stack; path-style addressing is enabled at runtime for MinIO.
+rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
+base64 = "0.22"

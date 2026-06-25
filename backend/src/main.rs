@@ -5,9 +5,11 @@ mod error;
 mod models;
 mod ratelimit;
 mod routes;
+mod storage;
 mod turnstile;
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use axum::{extract::State, routing::get, Json, Router};
 use serde_json::{json, Value};
@@ -15,9 +17,12 @@ use sqlx::postgres::PgPool;
 use tower_governor::GovernorLayer;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
+use crate::storage::Storage;
+
 #[derive(Clone)]
 pub struct AppState {
     pool: PgPool,
+    storage: Arc<Storage>,
 }
 
 #[tokio::main]
@@ -35,7 +40,8 @@ async fn main() -> anyhow::Result<()> {
     db::migrate(&pool).await?;
     tracing::info!("database connected and migrations applied");
 
-    let state = AppState { pool };
+    let storage = Arc::new(Storage::from_env().await?);
+    let state = AppState { pool, storage };
 
     tracing::info!("rate limits: {}", ratelimit::describe());
     let global_limit = GovernorLayer {

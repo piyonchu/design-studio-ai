@@ -210,7 +210,7 @@ export function ProjectWorkspace() {
     }
     const root = (content as { root?: Element } | null)?.root
     if (!root) return
-    const newRoot = setFirstImageSrc(root, asset.s3_key)
+    const newRoot = setFirstImageSrc(root, asset.url)
     if (!newRoot) {
       setError('This screen has no image element to attach to.')
       return

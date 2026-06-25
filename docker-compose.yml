@@ -18,5 +18,27 @@ services:
       timeout: 5s
       retries: 10
 
+  # S3-compatible object storage for generated assets (local dev stand-in for
+  # AWS S3). The backend creates the bucket on boot, so no init container.
+  minio:
+    image: minio/minio:latest
+    container_name: design-studio-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"         # S3 API
+      - "${MINIO_CONSOLE_PORT:-9001}:9001" # web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   db_data:
+  minio_data:
