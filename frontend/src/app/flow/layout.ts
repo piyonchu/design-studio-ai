@@ -57,7 +57,9 @@ function rank(nodes: FlowDslNode[], edges: FlowDslEdge[]): Map<string, number> {
   return ranks
 }
 
-export function dslToFlow(dsl: FlowDsl): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
+export function dslToFlow(input: FlowDsl): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
+  // Tolerate partial/foreign content (e.g. a brief render race on tab switch).
+  const dsl: FlowDsl = { nodes: input?.nodes ?? [], edges: input?.edges ?? [] }
   const ranks = rank(dsl.nodes, dsl.edges)
   const perRank = new Map<number, number>() // how many placed in each rank column
 
