@@ -16,6 +16,43 @@ pub fn router() -> Router<AppState> {
         .route("/projects/:project_id/assets/similar-check", post(similar_check))
         .route("/projects/:project_id/embeddings/backfill", post(backfill))
         .route("/assets/:id/similar", get(similar))
+        .route("/assets/:id/style-fit", get(style_fit))
+}
+
+/// How well an asset matches the project's *approved* style: the cosine
+/// similarity of its embedding to the nearest approved asset (0–1). A credible,
+/// embedding-based check to surface at review time (PLAN §6). `score` is null
+/// when the asset has no embedding or there are no other approved assets yet.
+async fn style_fit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let project_id: Option<Uuid> = sqlx::query_scalar("SELECT project_id FROM assets WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let project_id = project_id.ok_or(AppError::NotFound)?;
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
+
+    let row: Option<(f64, i64)> = sqlx::query_as(
+        "WITH q AS (SELECT embedding FROM visual_embeddings WHERE asset_id = $1)
+         SELECT MAX(1 - (e.embedding <=> q.embedding))::float8,
+                COUNT(*)::int8
+         FROM visual_embeddings e
+         JOIN assets a ON a.id = e.asset_id, q
+         WHERE a.project_id = $2 AND a.status = 'approved' AND a.id <> $1",
+    )
+    .bind(id)
+    .bind(project_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let (score, basis) = match row {
+        Some((s, n)) if n > 0 => (Some(s), n),
+        _ => (None, 0),
+    };
+    Ok(Json(serde_json::json!({ "score": score, "basis": basis })))
 }
 
 /// Embed a query and cosine-rank the project's assets. `score = 1 - distance`
