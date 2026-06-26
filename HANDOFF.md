@@ -60,7 +60,8 @@ Open http://localhost:5173 → sign up → open a project.
 
 ## Conventions
 - **Branch per PR**, ~3 logical commits, merge with `--merge` (no squash unless asked). End commits with the Co-Authored-By trailer.
-- Verify every change: `cargo build` + a curl smoke test (backend), `tsc -b` + `npm run build` (frontend).
+- Verify every change: `cargo build` + `cargo test` + a curl smoke test (backend), `tsc -b` + `npm run build` (frontend).
+- **Tests + CI:** `cargo test` runs 18 DB-free unit tests over the core pure logic (embeddings, canon diff, export slug, WAV, cache key, llm prompt, verticals, compile_prompt). GitHub Actions (`.github/workflows/ci.yml`) runs backend build+test and frontend build on push/PR — no DB or secrets needed (runtime sqlx + mock-default AI).
 - `git pull` has a quirky upstream config on some branches — if it errors, use `git merge --ff-only @{u}`.
 
 ## Not in git (local-only planning docs)
