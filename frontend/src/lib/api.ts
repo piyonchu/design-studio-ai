@@ -124,7 +124,33 @@ export const addVersion = (
     body: JSON.stringify(body),
   })
 
+// ── Canon (versioned style rules + exemplars) ──────────────────────────────────
+export interface Canon {
+  id: string
+  project_id: string
+  parent_id: string | null
+  version: number
+  data: unknown // { style: {...}, negative: [...], exemplar_asset_ids: [...] }
+  created_at: string
+}
+
+/** Current canon, or null if none defined yet (backend 404). */
+export const getCanon = (projectId: string) =>
+  request<Canon>(`/projects/${projectId}/canon`).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) return null
+    throw e
+  })
+
+/** Append a new canon version (auto-incremented + lineage on the backend). */
+export const saveCanon = (projectId: string, data: unknown) =>
+  request<Canon>(`/projects/${projectId}/canon`, {
+    method: 'POST',
+    body: JSON.stringify({ data }),
+  })
+
 // ── Assets ────────────────────────────────────────────────────────────────────
+export type AssetStatus = 'candidate' | 'approved' | 'rejected' | 'needs_review'
+
 export interface Asset {
   id: string
   project_id: string
@@ -134,6 +160,10 @@ export interface Asset {
   url: string // stable, browser-usable image URL — use for <img src> / props.src
   mime_type: string | null
   prompt: string | null
+  role: string | null
+  status: AssetStatus
+  tags: string[]
+  source_kind: string // 'uploaded' | 'seeded' | 'derived'
   created_at: string
 }
 
@@ -151,3 +181,26 @@ export const attachAsset = (assetId: string, screenArtifactId: string) =>
     method: 'POST',
     body: JSON.stringify({ screen_artifact_id: screenArtifactId }),
   })
+
+/** Upload a base/reference image. Raw bytes body, not multipart. */
+export const uploadAsset = async (
+  projectId: string,
+  file: File,
+  role?: string,
+): Promise<Asset> => {
+  const q = role ? `?role=${encodeURIComponent(role)}` : ''
+  const res = await fetch(`${BASE}/projects/${projectId}/assets/upload${q}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': file.type || 'image/png' },
+    body: file,
+  })
+  const body = await res.json().catch(() => null)
+  if (!res.ok) {
+    const msg =
+      (body && typeof body === 'object' && 'error' in body && String(body.error)) ||
+      `upload failed (${res.status})`
+    throw new ApiError(res.status, msg)
+  }
+  return body as Asset
+}
