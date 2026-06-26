@@ -31,7 +31,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | Batch derive — "Derive all" runs every preset → a whole set in one click | ✅ |
 | — | Style-fit score — embedding similarity to approved assets, shown at review | ✅ |
 | 6 | 2nd vertical — **manhwa/webtoon** (config-only; proves core generalizes) | ✅ |
-| — | **Vertical-adapter framework** — registry per side (BE prompt rules + validation; FE picker single-source); 3rd vertical **illustration** | ✅ |
+| — | **Vertical-adapter framework** — registry per side (BE prompt rules + validation; FE picker single-source); verticals: game_2d, manhwa, illustration, **marketing** | ✅ |
 | — | Test suite — 26 DB-free unit tests + a DB-backed API integration test (oneshot) + CI | ✅ |
 | — | Activity feed — merged asset/comment/canon timeline (Activity tab) | ✅ |
 | — | Engine adapters — **Godot 4 + Unity** import-ready packs (per-vertical `engines` hook, game_2d) | ✅ (Unity format-validated, not editor-tested) |
@@ -70,7 +70,10 @@ all decision/spend-gated — confirm before starting:
   `.import` + drop-in `project.godot`. Unity pack: textures + `.meta` (Sprite +
   stable GUID), copy into `Assets/`. Unity's `.meta` is format-validated, not
   editor-tested (licensed editor). Next engine = one `Engine` variant + a packer.
-- **4th vertical** (e.g. marketing) — pure config: one row in each registry.
+- **Commercialization** (next) — async generation queue (DB-backed jobs + worker),
+  usage visibility (surface OpenRouter remaining credit), production hardening
+  (CORS allowlist, prompt denylist moderation, security headers, dev-token
+  password-reset). Decisions captured 2026-06-27.
 - **Animation** (frame sequences) — own spike, real-model spend.
 - **Pixel-CLIP visual embedder** — swaps behind `embed_text`; shared-key spend.
 - **Commercialization track** — async gen queue, billing/quotas, deploy,

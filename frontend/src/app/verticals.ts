@@ -3,7 +3,7 @@
 // preset + canon-hint set here. This is the rule-of-three proof: adding manhwa
 // required no core changes. Extract an adapter framework once there are 2–3.
 
-export type Vertical = 'game_2d' | 'manhwa' | 'illustration'
+export type Vertical = 'game_2d' | 'manhwa' | 'illustration' | 'marketing'
 
 export interface DerivePreset {
   id: string
@@ -74,6 +74,22 @@ export const VERTICALS: Record<Vertical, VerticalConfig> = {
       ['linework', 'Linework', 'bold even outlines, rounded corners'],
       ['lighting', 'Lighting', 'soft top-left light, gentle long shadows'],
       ['composition', 'Composition', 'single subject, generous padding, transparent bg'],
+    ],
+  },
+  marketing: {
+    label: 'Marketing / Brand',
+    derivePresets: [
+      { id: 'social', label: 'Social post', text: 'Reframe the SAME key visual for a square social post with room for a headline. Keep identical brand style, palette, and subject.' },
+      { id: 'banner', label: 'Banner', text: 'A wide banner crop of the SAME key visual with generous negative space on one side for copy. Keep identical brand look.' },
+      { id: 'colorway', label: 'Colorway', text: 'The SAME composition in an alternate on-brand color theme. Keep identical layout, subject, and typography mood.' },
+      { id: 'campaignmate', label: 'Campaign mate', text: 'A new key visual in the EXACT same brand style, palette, and tone — a cohesive campaign member.' },
+    ],
+    canonFields: [
+      ['brand_palette', 'Brand palette', 'navy + coral accent, off-white ground'],
+      ['typography', 'Typography mood', 'modern geometric sans, generous tracking'],
+      ['tone', 'Tone / mood', 'optimistic, premium, uncluttered'],
+      ['subject', 'Subject treatment', 'single hero product, soft studio light'],
+      ['composition', 'Composition', 'rule-of-thirds focal point, ample copy space, simple bg'],
     ],
   },
 }

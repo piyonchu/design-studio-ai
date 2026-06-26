@@ -76,6 +76,12 @@ const VERTICALS: &[Vertical] = &[
         render_hint: "A single polished illustration subject, clean composition on a transparent background.",
         engines: &[],
     },
+    Vertical {
+        key: "marketing",
+        label: "Marketing / Brand",
+        render_hint: "A clean on-brand marketing visual with one clear focal subject and generous negative space for copy, simple uncluttered background.",
+        engines: &[],
+    },
 ];
 
 /// Look up a vertical by key, falling back to the default (`game_2d`) for an
@@ -103,9 +109,11 @@ mod tests {
         assert_eq!(get("manhwa").key, "manhwa");
         assert_eq!(get("illustration").key, "illustration");
         assert_eq!(get("bogus").key, "game_2d"); // unknown → default
-        assert!(is_known("game_2d") && is_known("illustration"));
+        assert!(is_known("game_2d") && is_known("illustration") && is_known("marketing"));
         assert!(!is_known("nope"));
-        assert!(all().len() >= 3);
+        assert!(all().len() >= 4);
+        // marketing is config-only — no engine export.
+        assert!(get("marketing").engines.is_empty());
     }
 
     #[test]
