@@ -7,6 +7,7 @@ mod comments;
 mod export;
 mod lineage;
 mod projects;
+mod search;
 mod workspaces;
 
 use axum::Router;
@@ -27,4 +28,5 @@ pub fn router() -> Router<AppState> {
         .merge(comments::router())
         .merge(lineage::router())
         .merge(export::router())
+        .merge(search::router())
 }

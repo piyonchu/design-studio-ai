@@ -97,6 +97,7 @@ async fn generate(
         .bind(canon_id)
         .fetch_one(&state.pool)
         .await?;
+        ai::embeddings::index_asset_soft(&state.pool, &asset).await;
         assets.push(with_url(asset));
     }
     Ok((StatusCode::CREATED, Json(assets)))
@@ -153,6 +154,7 @@ async fn upload(
     .bind(&params.role)
     .fetch_one(&state.pool)
     .await?;
+    ai::embeddings::index_asset_soft(&state.pool, &asset).await;
     Ok((StatusCode::CREATED, Json(with_url(asset))))
 }
 
@@ -242,6 +244,7 @@ async fn derive(
         .bind(base_id)
         .execute(&state.pool)
         .await?;
+        ai::embeddings::index_asset_soft(&state.pool, &asset).await;
         out.push(with_url(asset));
     }
     Ok((StatusCode::CREATED, Json(out)))

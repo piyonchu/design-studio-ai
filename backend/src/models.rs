@@ -271,6 +271,28 @@ pub struct ReconcileRequest {
     pub asset_ids: Vec<Uuid>,
 }
 
+// ── Search / RAG ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SimilarCheck {
+    pub prompt: String,
+}
+
+/// An asset plus its similarity score (cosine, 1.0 = identical) for search,
+/// "find similar", and the pre-generate dedup nudge.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ScoredAsset {
+    #[serde(flatten)]
+    #[sqlx(flatten)]
+    pub asset: Asset,
+    pub score: f64,
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]

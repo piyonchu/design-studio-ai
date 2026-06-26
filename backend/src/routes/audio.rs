@@ -52,6 +52,7 @@ async fn generate(
         .bind(json!({ "duration_ms": clip.duration_ms }))
         .fetch_one(&state.pool)
         .await?;
+        ai::embeddings::index_asset_soft(&state.pool, &asset).await;
         assets.push(with_url(asset));
     }
     Ok((StatusCode::CREATED, Json(assets)))
