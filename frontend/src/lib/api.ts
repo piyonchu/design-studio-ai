@@ -393,6 +393,42 @@ export const reconcileAssets = (projectId: string, assetIds: string[]) =>
     body: JSON.stringify({ asset_ids: assetIds }),
   })
 
+// ── Async jobs ───────────────────────────────────────────────────────────────
+export interface Job {
+  id: string
+  project_id: string
+  kind: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed'
+  payload: Record<string, unknown>
+  result: { asset_ids?: string[] } | null
+  error: string | null
+  attempts: number
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+/** Enqueue an async generation; returns the queued job to poll. */
+export const enqueueGenerate = (projectId: string, prompt: string, count = 2) =>
+  request<Job>(`/projects/${projectId}/jobs`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt, count }),
+  })
+/** Recent jobs for a project (newest first). */
+export const listJobs = (projectId: string) => request<Job[]>(`/projects/${projectId}/jobs`)
+/** One job's current status (for polling). */
+export const getJob = (jobId: string) => request<Job>(`/jobs/${jobId}`)
+
+// ── Usage (shared OpenRouter key budget) ─────────────────────────────────────
+export interface Usage {
+  remaining: number
+  usage: number
+  limit: number | null
+  /** "openrouter" (live), "mock" (no key), or "stale" (last good value). */
+  source: string
+}
+/** The shared dev key's remaining OpenRouter credit. */
+export const getUsage = () => request<Usage>('/usage')
+
 // ── Export ───────────────────────────────────────────────────────────────────
 export interface AssetCheck {
   id: string
@@ -421,13 +457,21 @@ export const checkExport = (projectId: string, assetIds: string[]) =>
     body: JSON.stringify({ asset_ids: assetIds }),
   })
 
-/** Build the pack and trigger a browser download of the zip. */
-export async function downloadExport(projectId: string, assetIds: string[]): Promise<void> {
+/**
+ * Build the pack and trigger a browser download of the zip. `target` selects an
+ * engine pack (e.g. `'godot'`) when the project's vertical supports it; omit it
+ * (or pass `'generic'`) for the vertical-neutral pack.
+ */
+export async function downloadExport(
+  projectId: string,
+  assetIds: string[],
+  target?: string,
+): Promise<void> {
   const res = await fetch(`${BASE}/projects/${projectId}/export`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ asset_ids: assetIds }),
+    body: JSON.stringify({ asset_ids: assetIds, target }),
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)

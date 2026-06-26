@@ -21,6 +21,42 @@ jobs:
       - run: cargo build --locked
       - run: cargo test --locked
 
+  integration:
+    name: Backend (integration, DB)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      # pgvector image: the migrations create the `vector` extension.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: designstudio
+          POSTGRES_PASSWORD: designstudio
+          POSTGRES_DB: design_studio
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U designstudio"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://designstudio:designstudio@localhost:5432/design_studio
+      # Mock every AI path; empty S3_BUCKET → inline storage (no MinIO needed).
+      ASSET_MOCK: "true"
+      EMBED_MOCK: "true"
+      LLM_MOCK: "true"
+      AUDIO_MOCK: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      # The end-to-end API tests are #[ignore]'d so the DB-free job above stays
+      # DB-free; here a Postgres service is up, so run them explicitly.
+      - run: cargo test --locked -- --ignored
+
   frontend:
     name: Frontend (typecheck + build)
     runs-on: ubuntu-latest

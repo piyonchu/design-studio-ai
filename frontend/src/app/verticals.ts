@@ -3,7 +3,7 @@
 // preset + canon-hint set here. This is the rule-of-three proof: adding manhwa
 // required no core changes. Extract an adapter framework once there are 2–3.
 
-export type Vertical = 'game_2d' | 'manhwa' | 'illustration'
+export type Vertical = 'game_2d' | 'manhwa' | 'illustration' | 'marketing'
 
 export interface DerivePreset {
   id: string
@@ -11,17 +11,23 @@ export interface DerivePreset {
   text: string
 }
 
+/** Engines an export pack can target — mirrors the backend `verticals::Engine`. */
+export type Engine = 'godot' | 'unity'
+
 export interface VerticalConfig {
   label: string
   /** Derivation presets offered when deriving from a base asset. */
   derivePresets: DerivePreset[]
   /** Canon style fields: [key, label, placeholder]. */
   canonFields: [string, string, string][]
+  /** Engines this vertical can emit an import-ready export pack for. */
+  engines?: Engine[]
 }
 
 export const VERTICALS: Record<Vertical, VerticalConfig> = {
   game_2d: {
     label: 'Game (2D)',
+    engines: ['godot', 'unity'],
     derivePresets: [
       { id: 'walk', label: 'Walk', text: 'Show the SAME character in a mid-walk side stride pose. Keep identical identity, palette, and proportions.' },
       { id: 'action', label: 'Action', text: 'Show the SAME character in a dynamic action pose. Keep identical identity, palette, and proportions.' },
@@ -70,7 +76,26 @@ export const VERTICALS: Record<Vertical, VerticalConfig> = {
       ['composition', 'Composition', 'single subject, generous padding, transparent bg'],
     ],
   },
+  marketing: {
+    label: 'Marketing / Brand',
+    derivePresets: [
+      { id: 'social', label: 'Social post', text: 'Reframe the SAME key visual for a square social post with room for a headline. Keep identical brand style, palette, and subject.' },
+      { id: 'banner', label: 'Banner', text: 'A wide banner crop of the SAME key visual with generous negative space on one side for copy. Keep identical brand look.' },
+      { id: 'colorway', label: 'Colorway', text: 'The SAME composition in an alternate on-brand color theme. Keep identical layout, subject, and typography mood.' },
+      { id: 'campaignmate', label: 'Campaign mate', text: 'A new key visual in the EXACT same brand style, palette, and tone — a cohesive campaign member.' },
+    ],
+    canonFields: [
+      ['brand_palette', 'Brand palette', 'navy + coral accent, off-white ground'],
+      ['typography', 'Typography mood', 'modern geometric sans, generous tracking'],
+      ['tone', 'Tone / mood', 'optimistic, premium, uncluttered'],
+      ['subject', 'Subject treatment', 'single hero product, soft studio light'],
+      ['composition', 'Composition', 'rule-of-thirds focal point, ample copy space, simple bg'],
+    ],
+  },
 }
 
 export const verticalConfig = (v?: string | null): VerticalConfig =>
   VERTICALS[(v as Vertical) in VERTICALS ? (v as Vertical) : 'game_2d']
+
+/** The engine export targets a project's vertical supports (possibly none). */
+export const enginesFor = (v?: string | null): Engine[] => verticalConfig(v).engines ?? []

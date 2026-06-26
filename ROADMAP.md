@@ -31,10 +31,10 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | Batch derive — "Derive all" runs every preset → a whole set in one click | ✅ |
 | — | Style-fit score — embedding similarity to approved assets, shown at review | ✅ |
 | 6 | 2nd vertical — **manhwa/webtoon** (config-only; proves core generalizes) | ✅ |
-| — | **Vertical-adapter framework** — registry per side (BE prompt rules + validation; FE picker single-source); 3rd vertical **illustration** | ✅ |
-| — | Test suite (18 unit tests over core logic) + GitHub Actions CI | ✅ |
+| — | **Vertical-adapter framework** — registry per side (BE prompt rules + validation; FE picker single-source); verticals: game_2d, manhwa, illustration, **marketing** | ✅ |
+| — | Test suite — 26 DB-free unit tests + a DB-backed API integration test (oneshot) + CI | ✅ |
 | — | Activity feed — merged asset/comment/canon timeline (Activity tab) | ✅ |
-| — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ |
+| — | Engine adapters — **Godot 4 + Unity** import-ready packs (per-vertical `engines` hook, game_2d) | ✅ (Unity format-validated, not editor-tested) |
 | — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
 
 ### Done — Phase 3.5 (visual intelligence, mock embeddings)
@@ -61,11 +61,23 @@ Canon versions now carry an auto-generated **deterministic diff** note ("palette
 guess. `GET /canon/history` + a version-history list in the Canon tab.
 Asset-level autoname (display names) is a possible follow-up.
 
-## Next: Nav shell (left rail) — or pick the next vertical
-Export is generic and grouped; engine-specific packers (Godot/Unity) are
-**deferred** — they're a per-vertical adapter, and per PLAN we don't build the
-adapter layer until 2–3 verticals exist (rule of three). The grouped manifest
-(`groups[]` keyed by role/tag) is the seam an adapter will consume.
+## Where it stands (2026-06-27)
+Phases 0–5 + RAG/LLM + audio + verticals framework + real AI are **done and
+merged** (PR #17, `main` @ `8f8e8d5`); 26 unit tests + a DB-backed integration test + CI green. Open candidates,
+all decision/spend-gated — confirm before starting:
+- **Engine export adapters** — **Godot 4 + Unity done** (per-vertical `engines`
+  list hook on the registry; game_2d declares both). Godot pack: textures +
+  `.import` + drop-in `project.godot`. Unity pack: textures + `.meta` (Sprite +
+  stable GUID), copy into `Assets/`. Unity's `.meta` is format-validated, not
+  editor-tested (licensed editor). Next engine = one `Engine` variant + a packer.
+- **Commercialization** — usage credit ✅, async generation queue ✅,
+  **production hardening ✅** (env CORS allowlist, security headers, prompt
+  content denylist). Remaining: dev-token password-reset / email-verify (its own
+  auth feature + migration — deferred). Decisions captured 2026-06-27.
+- **Animation** (frame sequences) — own spike, real-model spend.
+- **Pixel-CLIP visual embedder** — swaps behind `embed_text`; shared-key spend.
+- **Commercialization track** — async gen queue, billing/quotas, deploy,
+  CORS lockdown, content moderation, password-reset/email-verify, pagination.
 
 ### Done — Phase 4 (audio modality, mock)
 - `ai/audio.rs` mirrors the image boundary: `AUDIO_MOCK=true` synthesizes a

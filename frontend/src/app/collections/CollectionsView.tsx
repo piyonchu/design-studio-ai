@@ -16,7 +16,7 @@ import { ExportDialog } from '../export/ExportDialog'
  * Collections — asset packs. List view (cards + create) and a detail view
  * (the pack's assets, remove + delete). Assets are added from the inspector.
  */
-export function CollectionsView({ projectId }: { projectId: string }) {
+export function CollectionsView({ projectId, vertical }: { projectId: string; vertical?: string }) {
   const [collections, setCollections] = useState<api.CollectionSummary[]>([])
   const [openId, setOpenId] = useState<string | null>(null)
   const [detail, setDetail] = useState<api.CollectionDetail | null>(null)
@@ -119,6 +119,7 @@ export function CollectionsView({ projectId }: { projectId: string }) {
             projectId={projectId}
             assetIds={detail.assets.map((a) => a.id)}
             title={detail.name}
+            vertical={vertical}
             onClose={() => setExporting(false)}
           />
         )}

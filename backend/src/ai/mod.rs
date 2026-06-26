@@ -9,3 +9,4 @@ pub mod cache;
 pub mod embeddings;
 pub mod images;
 pub mod llm;
+pub mod usage;

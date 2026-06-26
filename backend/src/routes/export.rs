@@ -194,8 +194,8 @@ async fn export(
 ) -> Result<impl IntoResponse, AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
 
-    let project_name: String =
-        sqlx::query_scalar("SELECT name FROM projects WHERE id = $1")
+    let (project_name, vertical): (String, String) =
+        sqlx::query_as("SELECT name, vertical FROM projects WHERE id = $1")
             .bind(project_id)
             .fetch_optional(&state.pool)
             .await?
@@ -206,6 +206,23 @@ async fn export(
     .bind(project_id)
     .fetch_optional(&state.pool)
     .await?;
+
+    // Resolve the export target against the project's vertical. Absent/"generic"
+    // → the vertical-neutral pack; a known engine tag is only allowed if the
+    // vertical declares that engine (the per-vertical export-adapter hook).
+    let engine = match body.target.as_deref() {
+        None | Some("") | Some("generic") => None,
+        Some(tag) => {
+            let e = crate::verticals::Engine::from_tag(tag)
+                .ok_or_else(|| AppError::BadRequest(format!("unknown export target '{tag}'")))?;
+            if !crate::verticals::get(&vertical).supports(e) {
+                return Err(AppError::BadRequest(format!(
+                    "vertical '{vertical}' has no '{tag}' export target"
+                )));
+            }
+            Some(e)
+        }
+    };
 
     let checked = gather(&state, project_id, &body.asset_ids).await?;
 
@@ -236,6 +253,7 @@ async fn export(
         "project": project_name,
         "canon_version": canon_version,
         "exported_at": chrono::Utc::now().to_rfc3339(),
+        "target": engine.map(|e| e.tag()).unwrap_or("generic"),
         "asset_count": included.len(),
         "groups": groups,
         "assets": included.iter().map(|(c, _)| serde_json::json!({
@@ -271,12 +289,70 @@ async fn export(
             zip.write_all(bytes)
                 .map_err(|e| AppError::Internal(format!("zip: {e}")))?;
         }
+
+        // Engine adapter: emit the import-ready scaffolding alongside the assets.
+        if let Some(e) = engine {
+            use crate::export::{godot, unity};
+            use crate::verticals::Engine;
+            let group_counts: Vec<(String, usize)> = group_order
+                .iter()
+                .map(|g| (g.clone(), included.iter().filter(|(c, _)| &c.group == g).count()))
+                .collect();
+            let asset_paths: Vec<String> = included.iter().map(|(c, _)| path_of(c)).collect();
+
+            let extra: Vec<crate::export::TextFile> = match e {
+                // A `<asset>.import` per texture (Godot fills the local cache
+                // pointer itself) + a drop-in project.godot + README.
+                Engine::Godot => {
+                    let mut v: Vec<_> = asset_paths
+                        .iter()
+                        .map(|p| crate::export::TextFile {
+                            path: format!("{p}.import"),
+                            contents: godot::texture_import(p),
+                        })
+                        .collect();
+                    v.push(crate::export::TextFile {
+                        path: "project.godot".into(),
+                        contents: godot::project_godot(&project_name),
+                    });
+                    v.push(crate::export::TextFile {
+                        path: "README.md".into(),
+                        contents: godot::readme(&project_name, canon_version, &group_counts),
+                    });
+                    v
+                }
+                // A `<asset>.meta` per texture (Sprite import + stable GUID) +
+                // README; copy `assets/` into a Unity project's `Assets/`.
+                Engine::Unity => {
+                    let mut v: Vec<_> = asset_paths
+                        .iter()
+                        .map(|p| crate::export::TextFile {
+                            path: format!("{p}.meta"),
+                            contents: unity::texture_meta(p),
+                        })
+                        .collect();
+                    v.push(crate::export::TextFile {
+                        path: "README.md".into(),
+                        contents: unity::readme(&project_name, canon_version, &group_counts),
+                    });
+                    v
+                }
+            };
+            for f in &extra {
+                zip.start_file(&f.path, opts)
+                    .map_err(|e| AppError::Internal(format!("zip: {e}")))?;
+                zip.write_all(f.contents.as_bytes())
+                    .map_err(|e| AppError::Internal(format!("zip: {e}")))?;
+            }
+        }
+
         zip.finish()
             .map_err(|e| AppError::Internal(format!("zip: {e}")))?
             .into_inner()
     };
 
-    let fname = format!("{}-pack.zip", slug(&project_name));
+    let suffix = engine.map(|e| format!("-{}", e.tag())).unwrap_or_default();
+    let fname = format!("{}{suffix}-pack.zip", slug(&project_name));
     Ok((
         [
             (header::CONTENT_TYPE, "application/zip".to_string()),
