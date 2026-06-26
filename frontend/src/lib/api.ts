@@ -265,6 +265,21 @@ export const similarAssets = (assetId: string) =>
 export const backfillEmbeddings = (projectId: string) =>
   request<{ indexed: number }>(`/projects/${projectId}/embeddings/backfill`, { method: 'POST' })
 
+export interface ContextHit {
+  source_kind: string // 'brief' | 'asset_prompt' | 'comment' | 'canon'
+  source_id: string | null
+  content: string
+  score: number
+}
+
+/** Ask the project — retrieve relevant context snippets ("why was this made"). */
+export const askContext = (projectId: string, q: string) =>
+  request<ContextHit[]>(`/projects/${projectId}/context?q=${encodeURIComponent(q)}`)
+
+/** (Re)build the semantic-context index from briefs/prompts/comments/canon. */
+export const backfillContext = (projectId: string) =>
+  request<{ indexed: number }>(`/projects/${projectId}/context/backfill`, { method: 'POST' })
+
 // ── Comments (collaboration) ─────────────────────────────────────────────────
 export interface AssetComment {
   id: string

@@ -7,6 +7,7 @@ import { AssetLibrary } from './assets/AssetLibrary'
 import { ReviewQueue } from './assets/ReviewQueue'
 import { LineageView } from './assets/LineageView'
 import { CanonView } from './canon/CanonView'
+import { ContextAsk } from './canon/ContextAsk'
 import { CollectionsView } from './collections/CollectionsView'
 
 type Tab = 'canon' | 'assets' | 'review' | 'lineage' | 'collections'
@@ -78,7 +79,10 @@ export function ProjectWorkspace() {
       <div className="relative z-10 flex min-h-0 flex-1 px-3 pb-3">
         {projectId &&
           (tab === 'canon' ? (
-            <CanonView projectId={projectId} />
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
+              <ContextAsk projectId={projectId} />
+              <CanonView projectId={projectId} />
+            </div>
           ) : tab === 'review' ? (
             <ReviewQueue projectId={projectId} />
           ) : tab === 'lineage' ? (
