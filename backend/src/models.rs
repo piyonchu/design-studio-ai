@@ -168,6 +168,24 @@ pub struct ArtifactWithHead {
     pub head_version: Option<ArtifactVersion>,
 }
 
+// ── Canon (versioned style rules + exemplars) ─────────────────────────────────
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct Canon {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub version: i32,
+    pub data: Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateCanon {
+    /// Free-form: { style: {...}, negative: [...], exemplar_asset_ids: [...] }.
+    pub data: Value,
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 /// Public user representation — never includes the password hash.
