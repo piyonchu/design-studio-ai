@@ -7,3 +7,10 @@
 //! Adding an engine target = a `verticals::Engine` variant + a packer module.
 
 pub mod godot;
+pub mod unity;
+
+/// A generated text file to drop into an export zip at `path`.
+pub struct TextFile {
+    pub path: String,
+    pub contents: String,
+}

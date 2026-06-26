@@ -19,12 +19,6 @@
 //! VRAM) so alpha edges stay crisp, no mipmaps, and alpha-border fix on to avoid
 //! dark halos when the sprite is scaled.
 
-/// A generated text file to drop into the zip at `path`.
-pub struct TextFile {
-    pub path: String,
-    pub contents: String,
-}
-
 /// The `[params]` block shared by every texture import — 2D-sprite defaults.
 const TEXTURE_PARAMS: &str = "\
 compress/mode=0

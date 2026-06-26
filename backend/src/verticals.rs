@@ -13,17 +13,20 @@ pub struct Vertical {
     /// Appended to every generate/derive prompt — the vertical's framing
     /// (e.g. an isolated game sprite vs a webtoon panel cutout).
     pub render_hint: &'static str,
-    /// Engine the vertical can emit an import-ready export pack for, if any.
-    /// This is the per-vertical export-adapter hook: the export route consults
-    /// it to decide which engine packer (`crate::export`) a project can target.
-    pub engine: Option<Engine>,
+    /// Engines the vertical can emit an import-ready export pack for. This is
+    /// the per-vertical export-adapter hook: the export route consults it to
+    /// decide which engine packers (`crate::export`) a project can target.
+    /// Empty = generic export only.
+    pub engines: &'static [Engine],
 }
 
 /// A game/app engine a vertical can produce an import-ready asset pack for.
-/// Adding a target = a variant here + a packer in `crate::export`.
+/// Adding a target = a variant here + a packer in `crate::export` + listing it
+/// on the verticals that support it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Engine {
     Godot,
+    Unity,
 }
 
 impl Engine {
@@ -31,14 +34,23 @@ impl Engine {
     pub fn tag(self) -> &'static str {
         match self {
             Engine::Godot => "godot",
+            Engine::Unity => "unity",
         }
     }
 
     pub fn from_tag(s: &str) -> Option<Engine> {
         match s {
             "godot" => Some(Engine::Godot),
+            "unity" => Some(Engine::Unity),
             _ => None,
         }
+    }
+}
+
+impl Vertical {
+    /// Whether this vertical can emit a pack for `engine`.
+    pub fn supports(&self, engine: Engine) -> bool {
+        self.engines.contains(&engine)
     }
 }
 
@@ -48,21 +60,21 @@ const VERTICALS: &[Vertical] = &[
         key: "game_2d",
         label: "Game (2D)",
         render_hint: "One centered isolated asset, transparent background.",
-        // 2D game assets drop straight into a Godot project as sprites.
-        engine: Some(Engine::Godot),
+        // 2D game assets drop straight into Godot or Unity as sprites.
+        engines: &[Engine::Godot, Engine::Unity],
     },
     Vertical {
         key: "manhwa",
         label: "Manhwa / Webtoon",
         render_hint:
             "A single character or element as a clean cutout on a transparent background, webtoon panel-ready.",
-        engine: None,
+        engines: &[],
     },
     Vertical {
         key: "illustration",
         label: "Illustration",
         render_hint: "A single polished illustration subject, clean composition on a transparent background.",
-        engine: None,
+        engines: &[],
     },
 ];
 
@@ -98,13 +110,16 @@ mod tests {
 
     #[test]
     fn engine_hook_and_tags() {
-        // game_2d can emit a Godot pack; other verticals declare no engine yet.
-        assert_eq!(get("game_2d").engine, Some(Engine::Godot));
-        assert_eq!(get("manhwa").engine, None);
-        assert_eq!(get("illustration").engine, None);
-        // Wire tag round-trips.
+        // game_2d can emit both engine packs; other verticals declare none yet.
+        assert!(get("game_2d").supports(Engine::Godot));
+        assert!(get("game_2d").supports(Engine::Unity));
+        assert!(!get("manhwa").supports(Engine::Godot));
+        assert!(get("illustration").engines.is_empty());
+        // Wire tags round-trip.
         assert_eq!(Engine::Godot.tag(), "godot");
+        assert_eq!(Engine::Unity.tag(), "unity");
         assert_eq!(Engine::from_tag("godot"), Some(Engine::Godot));
-        assert_eq!(Engine::from_tag("unity"), None);
+        assert_eq!(Engine::from_tag("unity"), Some(Engine::Unity));
+        assert_eq!(Engine::from_tag("cryengine"), None);
     }
 }

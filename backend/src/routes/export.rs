@@ -215,7 +215,7 @@ async fn export(
         Some(tag) => {
             let e = crate::verticals::Engine::from_tag(tag)
                 .ok_or_else(|| AppError::BadRequest(format!("unknown export target '{tag}'")))?;
-            if crate::verticals::get(&vertical).engine != Some(e) {
+            if !crate::verticals::get(&vertical).supports(e) {
                 return Err(AppError::BadRequest(format!(
                     "vertical '{vertical}' has no '{tag}' export target"
                 )));
@@ -291,30 +291,53 @@ async fn export(
         }
 
         // Engine adapter: emit the import-ready scaffolding alongside the assets.
-        if engine == Some(crate::verticals::Engine::Godot) {
-            use crate::export::godot;
-            let mut extra: Vec<godot::TextFile> = Vec::new();
-            // A `<asset>.import` next to each texture so Godot imports it with
-            // our 2D-sprite settings (it fills the local cache pointer itself).
-            for (c, _) in &included {
-                let asset_path = path_of(c);
-                extra.push(godot::TextFile {
-                    path: format!("{asset_path}.import"),
-                    contents: godot::texture_import(&asset_path),
-                });
-            }
+        if let Some(e) = engine {
+            use crate::export::{godot, unity};
+            use crate::verticals::Engine;
             let group_counts: Vec<(String, usize)> = group_order
                 .iter()
                 .map(|g| (g.clone(), included.iter().filter(|(c, _)| &c.group == g).count()))
                 .collect();
-            extra.push(godot::TextFile {
-                path: "project.godot".into(),
-                contents: godot::project_godot(&project_name),
-            });
-            extra.push(godot::TextFile {
-                path: "README.md".into(),
-                contents: godot::readme(&project_name, canon_version, &group_counts),
-            });
+            let asset_paths: Vec<String> = included.iter().map(|(c, _)| path_of(c)).collect();
+
+            let extra: Vec<crate::export::TextFile> = match e {
+                // A `<asset>.import` per texture (Godot fills the local cache
+                // pointer itself) + a drop-in project.godot + README.
+                Engine::Godot => {
+                    let mut v: Vec<_> = asset_paths
+                        .iter()
+                        .map(|p| crate::export::TextFile {
+                            path: format!("{p}.import"),
+                            contents: godot::texture_import(p),
+                        })
+                        .collect();
+                    v.push(crate::export::TextFile {
+                        path: "project.godot".into(),
+                        contents: godot::project_godot(&project_name),
+                    });
+                    v.push(crate::export::TextFile {
+                        path: "README.md".into(),
+                        contents: godot::readme(&project_name, canon_version, &group_counts),
+                    });
+                    v
+                }
+                // A `<asset>.meta` per texture (Sprite import + stable GUID) +
+                // README; copy `assets/` into a Unity project's `Assets/`.
+                Engine::Unity => {
+                    let mut v: Vec<_> = asset_paths
+                        .iter()
+                        .map(|p| crate::export::TextFile {
+                            path: format!("{p}.meta"),
+                            contents: unity::texture_meta(p),
+                        })
+                        .collect();
+                    v.push(crate::export::TextFile {
+                        path: "README.md".into(),
+                        contents: unity::readme(&project_name, canon_version, &group_counts),
+                    });
+                    v
+                }
+            };
             for f in &extra {
                 zip.start_file(&f.path, opts)
                     .map_err(|e| AppError::Internal(format!("zip: {e}")))?;
