@@ -21,23 +21,30 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 3.5 | Visual intelligence (embeddings/dedup/similar) — **spike-gated** | ⏳ (needs spend go-ahead) |
 | 4 | (per PLAN) deeper RAG / asset intelligence | ⏳ |
 | 5 · PR1 | Export — generic zip + manifest + pre-export checks | ✅ |
-| **5 · PR2** | **Export — Godot package (then Unity)** | 🚧 next |
-| — | Nav shell (left rail + slide-overs, replace tabs) | ⏳ |
+| 5 · PR2 | Export — role/tag-grouped pack (vertical-neutral) | ✅ |
+| — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ (deferred — rule of three) |
+| — | **Nav shell (left rail + slide-overs, replace tabs)** | 🚧 next |
 
-## Next: Phase 5 PR2 — Godot package
-Generic export (PR1) shipped. Next: a **Godot-ready** package — engine-native
-layout (e.g. a `.tres`/sprite-atlas or per-asset `.import` stubs + a folder
-structure Godot recognizes), selectable as an export target alongside the
-generic zip. Unity after. (Phase 3.5 visual-intelligence stays parked — its
-spike spends on the shared key, so it waits for a go-ahead.)
+## Next: Nav shell (left rail) — or pick the next vertical
+Export is generic and grouped; engine-specific packers (Godot/Unity) are
+**deferred** — they're a per-vertical adapter, and per PLAN we don't build the
+adapter layer until 2–3 verticals exist (rule of three). The grouped manifest
+(`groups[]` keyed by role/tag) is the seam an adapter will consume.
 
-### Done — Phase 5 PR1 (generic export)
-- **Pre-export checks** — `POST /projects/:id/export/check`: per-asset filename,
-  decoded format/dimensions/alpha (png/jpeg), issues. Blocking = rejected /
-  undecodable; SVG-vector is a warning.
-- **Pack** — `POST /projects/:id/export`: a zip of `manifest.json` (project,
-  canon version, exported_at, per-asset metadata + skipped list) + `assets/*`.
-  Frontend: an Export dialog from a collection shows the report, then downloads.
+Good next moves (no spend, no new vertical lock-in):
+- **Nav shell** — replace the growing tab bar (Canon/Assets/Review/Lineage/
+  Collections) with a left rail + slide-overs, matching the design mockups.
+- Export-from-board (multi-select → export) and approved-assets-feed-canon are
+  small high-value follow-ups.
+- Phase 3.5 visual-intelligence stays parked (its spike spends on the shared key).
+
+### Done — Phase 5 (export, vertical-neutral)
+- **Pre-export checks** — `POST /export/check`: per-asset filename,
+  format/dimensions/alpha (png/jpeg), issues. Blocking = rejected / undecodable.
+- **Grouped pack** — `POST /export`: a zip of `manifest.json` (project, canon
+  version, `groups[]` by role/tag, per-asset metadata + skipped list) +
+  `assets/<group>/<file>`. Frontend: an Export dialog from a collection shows
+  the grouped report, then downloads. Engine adapters consume `groups[]` later.
 - Then a **Godot package** (Unity later).
 
 ### Done — Phase 3 PR5 (lineage + canon propagation)
