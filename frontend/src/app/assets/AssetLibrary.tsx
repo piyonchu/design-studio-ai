@@ -11,6 +11,7 @@ import {
   FlagIcon,
   StackPlusIcon,
   PackageIcon,
+  MusicNotesIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
@@ -53,6 +54,7 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
   const [assets, setAssets] = useState<api.Asset[]>([])
   const [collections, setCollections] = useState<api.CollectionSummary[]>([])
   const [prompt, setPrompt] = useState('')
+  const [genMode, setGenMode] = useState<'image' | 'audio'>('image')
   const [baseId, setBaseId] = useState<string | null>(null)
   const [instruction, setInstruction] = useState('')
   const [busy, setBusy] = useState(false)
@@ -155,7 +157,10 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
     setBusy(true)
     setError(null)
     try {
-      const created = await api.generateAssets(projectId, p, 2)
+      const created =
+        genMode === 'audio'
+          ? await api.generateAudio(projectId, p, 2)
+          : await api.generateAssets(projectId, p, 2)
       setAssets((a) => [...created, ...a])
       setPrompt('')
     } catch (err) {
@@ -503,10 +508,29 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
         ) : (
           <form onSubmit={generate} className="border-b border-white/8 p-4">
             <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-[12px] bg-surface-2/60 p-2">
+              <div className="flex shrink-0 items-center rounded-[8px] bg-surface/60 p-0.5">
+                {(['image', 'audio'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setGenMode(m)}
+                    aria-label={`Generate ${m}`}
+                    className={`grid size-7 place-items-center rounded-[6px] transition ${
+                      genMode === m ? 'bg-teal text-bg' : 'text-text-dim hover:text-text'
+                    }`}
+                  >
+                    {m === 'image' ? <ImageIcon size={14} weight="fill" /> : <MusicNotesIcon size={14} weight="fill" />}
+                  </button>
+                ))}
+              </div>
               <input
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe an asset to generate… (or click a tile to derive)"
+                placeholder={
+                  genMode === 'audio'
+                    ? 'Describe a sound to generate… (e.g. sword clang, ambient loop)'
+                    : 'Describe an asset to generate… (or click a tile to derive)'
+                }
                 className="flex-1 bg-transparent px-2 text-sm text-text outline-none placeholder:text-text-dim"
               />
               <button
@@ -543,7 +567,19 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                     className={`group relative cursor-pointer overflow-hidden rounded-[12px] transition ${ring}`}
                     title={a.derivation ?? a.prompt ?? a.role ?? ''}
                   >
-                    <img src={a.url} alt={a.prompt ?? a.role ?? ''} className="aspect-square w-full object-cover" />
+                    {a.kind === 'audio' ? (
+                      <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-surface-2/50 p-3">
+                        <MusicNotesIcon size={26} weight="fill" className="text-teal-bright" />
+                        <audio
+                          controls
+                          src={a.url}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full"
+                        />
+                      </div>
+                    ) : (
+                      <img src={a.url} alt={a.prompt ?? a.role ?? ''} className="aspect-square w-full object-cover" />
+                    )}
 
                     {/* Select checkbox (select mode) */}
                     {selecting && (

@@ -137,6 +137,13 @@ export const generateAssets = (projectId: string, prompt: string, count = 1) =>
     body: JSON.stringify({ prompt, count }),
   })
 
+/** Generate audio assets (SFX / loops) — kind='audio'. */
+export const generateAudio = (projectId: string, prompt: string, count = 1) =>
+  request<Asset[]>(`/projects/${projectId}/audio`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt, count }),
+  })
+
 /** Derive variants from a base asset, conditioned on the base + current canon. */
 export const deriveAssets = (
   projectId: string,

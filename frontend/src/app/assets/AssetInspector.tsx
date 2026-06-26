@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon } from '@phosphor-icons/react'
+import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { CommentThread } from './CommentThread'
@@ -125,11 +125,18 @@ export function AssetInspector({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <img
-              src={detail.url}
-              alt={detail.role ?? ''}
-              className="mb-3 aspect-square w-full rounded-[12px] object-contain ring-1 ring-white/10"
-            />
+            {detail.kind === 'audio' ? (
+              <div className="mb-3 flex aspect-square w-full flex-col items-center justify-center gap-3 rounded-[12px] bg-surface/60 p-4 ring-1 ring-white/10">
+                <MusicNotesIcon size={40} weight="fill" className="text-teal-bright" />
+                <audio controls src={detail.url} className="w-full" />
+              </div>
+            ) : (
+              <img
+                src={detail.url}
+                alt={detail.role ?? ''}
+                className="mb-3 aspect-square w-full rounded-[12px] object-contain ring-1 ring-white/10"
+              />
+            )}
 
             <div className="mb-4 flex flex-wrap items-center gap-1.5 text-[11px]">
               <span className="rounded-[6px] bg-white/8 px-1.5 py-0.5 text-text-dim">{detail.source_kind}</span>
