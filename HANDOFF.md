@@ -28,14 +28,6 @@ Open http://localhost:5173 → sign up → open a project.
 - `ASSET_MOCK=false` + `OPENROUTER_API_KEY=...` → real images (≈$0.04/image).
 - The shared OpenRouter key is **not** in git (`.env` is gitignored) — get it from the team. (~$8.78 left at handoff.)
 
-## "Backend won't run" — checklist (these actually bit us)
-1. **Docker not running** → start Docker Desktop, confirm `docker info` works, then `docker compose up -d`.
-2. **`cargo` not found** → the terminal predates the rustup install. Open a *fresh* terminal (or restart VS Code), or use the full path: `& "$env:USERPROFILE\.cargo\bin\cargo.exe" run`.
-3. **Port 8080 busy / `Access is denied` on build** → a stale backend holds the lock: `Get-Process design-studio-backend | Stop-Process -Force` (PowerShell), then rerun.
-4. **`migration N was previously applied but has been modified`** → CRLF line-ending on a `.sql`. `.gitattributes` pins `*.sql` to LF; if it recurs, reset the dev DB (no real data): `docker compose down -v && docker compose up -d`.
-5. **Added a migration but it doesn't apply** → `sqlx::migrate!` embeds at compile time; force a rebuild: `touch backend/src/db.rs` then `cargo run`.
-6. **Node too old** → vite 8 needs Node ≥ 20.19; `node -v`, upgrade if below.
-
 ## What's built (Phase 0–3 PR2)
 - **Auth** — email+password, httpOnly session cookie, workspace roles.
 - **Projects** (`vertical='game_2d'`) + **Canon** — versioned style rules (Canon tab). Canon feeds both generate + derive prompts.
