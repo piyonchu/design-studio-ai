@@ -255,3 +255,24 @@ export const addComment = (assetId: string, body: string) =>
 
 export const deleteComment = (id: string) =>
   request<void>(`/comments/${id}`, { method: 'DELETE' })
+
+// ── Lineage + canon propagation ──────────────────────────────────────────────
+export interface AssetLink {
+  from_asset: string // the derivative
+  to_asset: string // the base it came from
+  relation: string // 'derived_from'
+}
+export interface LineageGraph {
+  assets: Asset[]
+  links: AssetLink[]
+}
+
+export const getLineage = (projectId: string) =>
+  request<LineageGraph>(`/projects/${projectId}/lineage`)
+
+/** Rebind assets to the current canon — the "keep" side of canon propagation. */
+export const reconcileAssets = (projectId: string, assetIds: string[]) =>
+  request<Asset[]>(`/projects/${projectId}/reconcile`, {
+    method: 'POST',
+    body: JSON.stringify({ asset_ids: assetIds }),
+  })
