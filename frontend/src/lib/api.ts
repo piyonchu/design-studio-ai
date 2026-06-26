@@ -122,6 +122,12 @@ export interface Asset {
   created_at: string
 }
 
+/** An asset plus its lineage — the base it came from + its derivatives. */
+export interface AssetDetail extends Asset {
+  base: Asset | null
+  derivatives: Asset[]
+}
+
 export const listAssets = (projectId: string) =>
   request<Asset[]>(`/projects/${projectId}/assets`)
 
@@ -148,6 +154,16 @@ export const setAssetStatus = (assetId: string, status: AssetStatus) =>
   request<Asset>(`/assets/${assetId}`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
+  })
+
+/** One asset with its lineage (base + derivatives). */
+export const getAsset = (id: string) => request<AssetDetail>(`/assets/${id}`)
+
+/** Patch editable metadata (role / tags). Only provided fields change. */
+export const updateAsset = (id: string, patch: { role?: string; tags?: string[] }) =>
+  request<Asset>(`/assets/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
   })
 
 /** Upload a base/reference image. Raw bytes body, not multipart. */
