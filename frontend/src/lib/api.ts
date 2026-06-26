@@ -290,6 +290,10 @@ export const similarCheck = (projectId: string, prompt: string) =>
 export const similarAssets = (assetId: string) =>
   request<ScoredAsset[]>(`/assets/${assetId}/similar`)
 
+/** How well an asset matches the project's approved style (0–1), or null. */
+export const styleFit = (assetId: string) =>
+  request<{ score: number | null; basis: number }>(`/assets/${assetId}/style-fit`)
+
 /** Index any assets in the project lacking an embedding (covers imports). */
 export const backfillEmbeddings = (projectId: string) =>
   request<{ indexed: number }>(`/projects/${projectId}/embeddings/backfill`, { method: 'POST' })

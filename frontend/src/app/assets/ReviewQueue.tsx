@@ -14,9 +14,24 @@ import { CommentThread } from './CommentThread'
 export function ReviewQueue({ projectId }: { projectId: string }) {
   const [queue, setQueue] = useState<api.Asset[]>([])
   const [focusId, setFocusId] = useState<string | null>(null)
+  const [fit, setFit] = useState<{ score: number | null; basis: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Style-fit of the focused candidate vs the project's approved assets.
+  useEffect(() => {
+    if (!focusId) {
+      setFit(null)
+      return
+    }
+    let alive = true
+    setFit(null)
+    api.styleFit(focusId).then((f) => alive && setFit(f)).catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [focusId])
 
   useEffect(() => {
     let alive = true
@@ -112,6 +127,20 @@ export function ReviewQueue({ projectId }: { projectId: string }) {
                 alt={focused.role ?? ''}
                 className="max-h-[52vh] max-w-full rounded-[14px] object-contain ring-1 ring-white/10"
               />
+              {fit?.score != null && (
+                <span
+                  title={`Embedding similarity to the nearest of ${fit.basis} approved asset(s)`}
+                  className={`rounded-[8px] px-2.5 py-1 text-xs font-medium ${
+                    fit.score >= 0.75
+                      ? 'bg-teal/15 text-teal-bright'
+                      : fit.score >= 0.5
+                        ? 'bg-amber-400/15 text-amber-200'
+                        : 'bg-rose-500/15 text-rose-200'
+                  }`}
+                >
+                  Style fit {Math.round(fit.score * 100)}%
+                </span>
+              )}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => decide(focused.id, 'approved')}
