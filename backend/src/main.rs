@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tower_governor::GovernorLayer;
 
 use design_studio_backend::storage::Storage;
-use design_studio_backend::{app, db, ratelimit, AppState};
+use design_studio_backend::{app, db, jobs, ratelimit, AppState};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -23,6 +23,9 @@ async fn main() -> anyhow::Result<()> {
 
     let storage = Arc::new(Storage::from_env().await?);
     let state = AppState { pool, storage };
+
+    // Drain async generation jobs in the background.
+    jobs::spawn_worker(state.clone());
 
     tracing::info!("rate limits: {}", ratelimit::describe());
     let global_limit = GovernorLayer {

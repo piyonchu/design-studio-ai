@@ -7,6 +7,7 @@ pub mod auth;
 pub mod db;
 pub mod error;
 pub mod export;
+pub mod jobs;
 pub mod models;
 pub mod ratelimit;
 pub mod routes;

@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tower::ServiceExt;
 
-use design_studio_backend::{app, db, storage::Storage, AppState};
+use design_studio_backend::{app, db, jobs, storage::Storage, AppState};
 
 const DEFAULT_DB: &str = "postgres://designstudio:designstudio@localhost:5432/design_studio";
 
@@ -203,4 +203,75 @@ async fn export_packs_end_to_end() {
     // ── validation: unknown target, and an engine the vertical lacks ────────
     let (st, _b, _) = export(Some("nintendo64")).await;
     assert_eq!(st, StatusCode::BAD_REQUEST, "unknown target → 400");
+}
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn async_generation_job_runs_to_success() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("AUDIO_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let state = AppState { pool, storage };
+    // The worker drains the queue; the router enqueues + reports status.
+    jobs::spawn_worker(state.clone());
+    let router = app(state);
+
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"Jobs\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    // Enqueue → a queued job comes back immediately.
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/jobs"),
+        Some(&cookie),
+        Some("{\"prompt\":\"async hero\",\"count\":2}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "enqueue");
+    assert_eq!(field(&b, "status"), "queued");
+    let job_id = field(&b, "id").to_owned();
+
+    // Poll until the worker finishes it.
+    let mut final_body = Vec::new();
+    for _ in 0..40 {
+        let (st, body, _) = send(&router, "GET", &format!("/jobs/{job_id}"), Some(&cookie), None).await;
+        assert_eq!(st, StatusCode::OK);
+        let status = field(&body, "status").to_owned();
+        if status == "succeeded" || status == "failed" {
+            final_body = body;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&final_body).unwrap();
+    assert_eq!(v["status"], "succeeded", "job succeeded: {v}");
+    let ids = v["result"]["asset_ids"].as_array().expect("result.asset_ids");
+    assert_eq!(ids.len(), 2, "produced two assets");
 }

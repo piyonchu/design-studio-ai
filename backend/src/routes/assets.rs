@@ -62,7 +62,20 @@ async fn generate(
     Json(body): Json<GenerateAssets>,
 ) -> Result<(StatusCode, Json<Vec<Asset>>), AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
-    let count = body.count.unwrap_or(1).clamp(1, 4);
+    let assets = run_generate(&state, project_id, &body.prompt, body.count.unwrap_or(1)).await?;
+    Ok((StatusCode::CREATED, Json(assets)))
+}
+
+/// Seed `count` assets against the project's current canon (and approved style
+/// exemplar, if any). Shared by the sync `generate` route and the async job
+/// worker (`crate::jobs`) so both produce identical, canon-bound results.
+pub(crate) async fn run_generate(
+    state: &AppState,
+    project_id: Uuid,
+    raw_prompt: &str,
+    count: u32,
+) -> Result<Vec<Asset>, AppError> {
+    let count = count.clamp(1, 4);
 
     // Seed against the current canon so generated bases follow the project's
     // style from the start. The model gets the compiled prompt; the asset keeps
@@ -78,7 +91,7 @@ async fn generate(
         .fetch_one(&state.pool)
         .await?;
     let canon_id = canon.as_ref().map(|(id, _)| *id);
-    let prompt = compile_prompt(&body.prompt, canon.as_ref().map(|(_, d)| d), &vertical);
+    let prompt = compile_prompt(raw_prompt, canon.as_ref().map(|(_, d)| d), &vertical);
 
     // The moat loop: if the project has an approved style exemplar, condition
     // generation on it (reference img2img) so new assets inherit the approved
@@ -93,7 +106,7 @@ async fn generate(
     .fetch_optional(&state.pool)
     .await?;
     let exemplar_ref = match &exemplar {
-        Some((eid, key, mime)) => match asset_bytes(&state, key, mime.as_deref()).await {
+        Some((eid, key, mime)) => match asset_bytes(state, key, mime.as_deref()).await {
             // Only raster references are usable as img2img input; skip vector/
             // unknown (e.g. mock SVG) and fall back to text-only generation.
             Ok((bytes, m)) if is_raster(&m) => {
@@ -134,7 +147,7 @@ async fn generate(
         .bind(project_id)
         .bind(&s3_key)
         .bind(&img.mime)
-        .bind(&body.prompt)
+        .bind(raw_prompt)
         .bind(canon_id)
         .bind(&exemplar_meta)
         .fetch_one(&state.pool)
@@ -142,7 +155,7 @@ async fn generate(
         ai::embeddings::index_asset_soft(&state.pool, &asset).await;
         assets.push(with_url(asset));
     }
-    Ok((StatusCode::CREATED, Json(assets)))
+    Ok(assets)
 }
 
 #[derive(Debug, Deserialize)]

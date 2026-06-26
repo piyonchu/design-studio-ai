@@ -355,6 +355,33 @@ pub struct ScoredAsset {
     pub score: f64,
 }
 
+// ── Async jobs ───────────────────────────────────────────────────────────────
+
+/// A queued/running/finished background job (e.g. async generation). `status`
+/// is a plain string ('queued'|'running'|'succeeded'|'failed') — see mig 0012.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct Job {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub kind: String,
+    pub status: String,
+    pub payload: Value,
+    pub result: Option<Value>,
+    pub error: Option<String>,
+    pub attempts: i32,
+    pub created_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
+}
+
+/// Enqueue an async generation: same params as `GenerateAssets`.
+#[derive(Debug, Deserialize)]
+pub struct EnqueueGenerate {
+    pub prompt: String,
+    #[serde(default)]
+    pub count: Option<u32>,
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
