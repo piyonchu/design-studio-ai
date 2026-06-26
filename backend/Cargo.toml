@@ -33,3 +33,7 @@ base64 = "0.22"
 # (dimensions / alpha). image is trimmed to the formats we actually emit.
 zip = { version = "2", default-features = false, features = ["deflate"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[dev-dependencies]
+# Integration tests drive the real router in-process via `oneshot`.
+tower = { version = "0.5", features = ["util"] }
