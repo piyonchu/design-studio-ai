@@ -276,3 +276,58 @@ export const reconcileAssets = (projectId: string, assetIds: string[]) =>
     method: 'POST',
     body: JSON.stringify({ asset_ids: assetIds }),
   })
+
+// ── Export ───────────────────────────────────────────────────────────────────
+export interface AssetCheck {
+  id: string
+  filename: string
+  role: string | null
+  status: AssetStatus
+  format: string | null
+  width: number | null
+  height: number | null
+  has_alpha: boolean | null
+  issues: string[]
+  ok: boolean
+}
+export interface ExportReport {
+  assets: AssetCheck[]
+  ok_count: number
+  issue_count: number
+}
+
+/** Pre-export deterministic check report (no pack produced). */
+export const checkExport = (projectId: string, assetIds: string[]) =>
+  request<ExportReport>(`/projects/${projectId}/export/check`, {
+    method: 'POST',
+    body: JSON.stringify({ asset_ids: assetIds }),
+  })
+
+/** Build the pack and trigger a browser download of the zip. */
+export async function downloadExport(projectId: string, assetIds: string[]): Promise<void> {
+  const res = await fetch(`${BASE}/projects/${projectId}/export`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ asset_ids: assetIds }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(
+      res.status,
+      (body && typeof body === 'object' && 'error' in body && String(body.error)) ||
+        `export failed (${res.status})`,
+    )
+  }
+  const blob = await res.blob()
+  const cd = res.headers.get('content-disposition') ?? ''
+  const name = /filename="?([^"]+)"?/.exec(cd)?.[1] ?? 'pack.zip'
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
