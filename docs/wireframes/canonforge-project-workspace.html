@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CanonForge — Project workspace wireframe</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" />
+<style>
+  :root{
+    --bg:#ffffff;--bg-2:#f4f3ee;--text:#1c1b18;--text-2:#5f5e5a;--text-3:#8a8980;
+    --border:rgba(0,0,0,.14);--border-2:rgba(0,0,0,.26);
+    --info-bg:#e6f1fb;--info-tx:#0c447c;--ok-bg:#eaf3de;--ok-tx:#27500a;
+    --r-md:8px;--r-lg:12px;--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#1f1e1c;--bg-2:#2a2925;--text:#ece9e2;--text-2:#a8a79f;--text-3:#76746c;
+      --border:rgba(255,255,255,.16);--border-2:rgba(255,255,255,.28);
+      --info-bg:#0c447c;--info-tx:#b5d4f4;--ok-bg:#27500a;--ok-tx:#c0dd97;}
+  }
+  body{margin:0;background:var(--bg-2);font-family:var(--sans);color:var(--text);padding:24px}
+  .doc{max-width:880px;margin:0 auto}
+  .cap{font-size:12px;color:var(--text-3);margin:0 0 12px}
+  .wf{border:.5px solid var(--border-2);border-radius:var(--r-lg);overflow:hidden;background:var(--bg)}
+  .lbl{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);margin:0 0 6px}
+  .fld{background:var(--bg-2);border:.5px solid var(--border);border-radius:var(--r-md);padding:7px 9px;font-size:12px;color:var(--text-2);margin-bottom:8px}
+  .tile{aspect-ratio:1;border:.5px solid var(--border-2);border-radius:var(--r-md);background:var(--bg-2);display:flex;align-items:center;justify-content:center;color:var(--text-3);position:relative}
+  .chip{font-size:11px;border:.5px solid var(--border-2);border-radius:var(--r-md);padding:4px 8px;color:var(--text-2);background:var(--bg)}
+  .badge{position:absolute;left:4px;bottom:4px;font-size:10px;padding:2px 5px;border-radius:var(--r-md)}
+  .btn{font-size:12px;border:.5px solid var(--border-2);border-radius:var(--r-md);padding:6px 10px;color:var(--text);background:var(--bg);text-align:center}
+  .tab{font-size:12px;padding:5px 9px;border-radius:var(--r-md);color:var(--text-2)}
+  .tab.on{background:var(--bg-2);color:var(--text)}
+</style>
+</head>
+<body>
+<div class="doc">
+  <p class="cap">CanonForge — project workspace (low-fi wireframe, from PLAN.md §4 / §6)</p>
+  <div class="wf">
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:.5px solid var(--border)">
+      <i class="ti ti-arrow-left" style="font-size:18px;color:var(--text-2)" aria-hidden="true"></i>
+      <span style="font-size:13px;font-weight:500">Cozy fantasy</span>
+      <span class="chip" style="padding:2px 7px;font-size:10px"><i class="ti ti-device-gamepad-2" style="font-size:12px;vertical-align:-1px" aria-hidden="true"></i> game_2d</span>
+      <div style="flex:1"></div>
+      <span class="tab on">Canon</span><span class="tab">Assets</span><span class="tab">Review</span>
+      <span class="tab"><i class="ti ti-download" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i> Export</span>
+      <i class="ti ti-user-circle" style="font-size:20px;color:var(--text-3)" aria-hidden="true"></i>
+    </div>
+    <div style="display:grid;grid-template-columns:170px minmax(0,1fr) 188px;min-height:360px">
+      <div style="border-right:.5px solid var(--border);padding:12px">
+        <p class="lbl">Canon · v3</p>
+        <div class="fld">Render: 16-bit pixel art</div>
+        <div class="fld">Palette: warm, ~16 colors</div>
+        <div class="fld">Outline: 1px dark</div>
+        <div class="fld" style="color:var(--text-3)">Negative: no photorealism…</div>
+        <p class="lbl" style="margin-top:12px">References</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
+          <div class="tile"><i class="ti ti-photo" style="font-size:18px" aria-hidden="true"></i></div>
+          <div class="tile"><i class="ti ti-photo" style="font-size:18px" aria-hidden="true"></i></div>
+        </div>
+        <div class="btn"><i class="ti ti-check" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i> Save new version</div>
+      </div>
+      <div style="padding:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <div class="fld" style="flex:1;margin:0;display:flex;align-items:center;gap:6px"><i class="ti ti-search" style="font-size:14px" aria-hidden="true"></i> Search assets…</div>
+          <span class="chip">Role</span><span class="chip">Status</span>
+        </div>
+        <p class="lbl">Base: wizard — derivative set</p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div class="tile"><i class="ti ti-photo" style="font-size:20px" aria-hidden="true"></i><span class="badge" style="background:var(--info-bg);color:var(--info-tx)">base</span></div>
+          <div class="tile"><i class="ti ti-photo" style="font-size:20px" aria-hidden="true"></i><span class="badge" style="background:var(--bg);color:var(--text-2)">walk</span></div>
+          <div class="tile"><i class="ti ti-photo" style="font-size:20px" aria-hidden="true"></i><span class="badge" style="background:var(--bg);color:var(--text-2)">action</span></div>
+          <div class="tile"><i class="ti ti-photo" style="font-size:20px" aria-hidden="true"></i><span class="badge" style="background:var(--ok-bg);color:var(--ok-tx)">matching</span></div>
+          <div class="tile"><i class="ti ti-photo" style="font-size:20px" aria-hidden="true"></i><span class="badge" style="background:var(--bg);color:var(--text-2)">variant</span></div>
+          <div class="tile" style="border-style:dashed;color:var(--text-3)"><i class="ti ti-plus" style="font-size:18px" aria-hidden="true"></i></div>
+        </div>
+      </div>
+      <div style="border-left:.5px solid var(--border);padding:12px">
+        <p class="lbl">Derive from base</p>
+        <div class="tile" style="aspect-ratio:auto;height:54px;margin-bottom:8px"><i class="ti ti-photo" style="font-size:18px" aria-hidden="true"></i></div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
+          <span class="chip">Walk</span><span class="chip">Action</span><span class="chip">Variant</span><span class="chip">Matching</span>
+          <span class="chip" style="opacity:.5"><i class="ti ti-lock" style="font-size:11px;vertical-align:-1px" aria-hidden="true"></i> Recolor</span>
+        </div>
+        <div class="fld" style="height:34px;color:var(--text-3)">Instruction…</div>
+        <div class="btn" style="background:var(--text);color:var(--bg);border:none"><i class="ti ti-sparkles" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i> Derive ×4</div>
+        <div style="border-top:.5px solid var(--border);margin:12px 0 10px"></div>
+        <p class="lbl">Review — candidate</p>
+        <div class="tile" style="aspect-ratio:auto;height:54px;margin-bottom:8px"><i class="ti ti-photo" style="font-size:18px" aria-hidden="true"></i></div>
+        <div style="display:flex;gap:5px">
+          <div class="btn" style="flex:1" title="Approve"><i class="ti ti-check" style="font-size:13px" aria-hidden="true"></i></div>
+          <div class="btn" style="flex:1" title="Reject"><i class="ti ti-x" style="font-size:13px" aria-hidden="true"></i></div>
+          <div class="btn" style="flex:1" title="Regenerate"><i class="ti ti-refresh" style="font-size:13px" aria-hidden="true"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="cap" style="margin-top:12px">Recolor is locked = deterministic (palette remap), not generative — per the spike finding. Built today (Phase 1): Canon panel, asset grid + badges. Planned (Phase 2): Derive + Review.</p>
+</div>
+</body>
+</html>
