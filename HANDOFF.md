@@ -39,11 +39,12 @@ Open http://localhost:5173 → sign up → open a project.
 - **Review queue** (Review tab) — candidate + needs-review backlog as a worklist; focused preview + approve/needs-review/reject with the discussion side-by-side; a decision advances to the next.
 - **Comments** — per-asset discussion thread (in the inspector and the queue): author + relative time, post, delete-own (project Owner can moderate).
 - **Lineage** (Lineage tab) — roots → derivatives tree; canon-drift detection: assets predating the current canon are flagged stale, with per-node Keep (reconcile) / Regenerate and a "Keep all" action.
+- **Smart search / dedup** — `ai/embeddings.rs` (mock feature-hashed embedder, `EMBED_MOCK` default) indexes assets on insert (generate/derive/**upload**/audio) into `visual_embeddings`. Board search box → `/assets/search?q` (semantic ranking); pre-generate nudge → `/assets/similar-check`; `/assets/:id/similar`; `/embeddings/backfill` for imports/old assets. Real text/CLIP model is a localized swap.
 - **Audio** — `POST /projects/:id/audio` generates `kind='audio'` assets via `ai/audio.rs` (mock WAV synth; `AUDIO_MOCK=true` default, no hosted provider yet). The board has an image/audio toggle; clips play inline in the grid + inspector.
 - **Export** — pre-export checks (`POST /export/check`: filename, format/dimensions/alpha, issues) + a grouped zip pack (`POST /export`: `manifest.json` with `groups[]` by role/tag + `assets/<group>/<file>`, rejected/undecodable skipped). Triggered from a collection via the Export dialog. Vertical-neutral; engine-specific packers (Godot/Unity) are deferred per PLAN (rule of three) and will consume the grouped manifest.
 
 ## Code map
-- `backend/src/routes/` — `auth, workspaces, projects, canon, assets, audio, collections, comments, lineage, export`.
+- `backend/src/routes/` — `auth, workspaces, projects, canon, assets, audio, collections, comments, lineage, export, search`.
 - `backend/src/ai/images.rs` — generate + `derive_image` (img2img) + mock. `backend/src/ai/audio.rs` — audio generation (mock WAV synth) behind the same boundary.
 - `backend/src/storage.rs` — S3/MinIO (+ inline fallback). `backend/src/models.rs` — all DTOs/rows.
 - `backend/migrations/` — `0001` base, `0002` auth, `0003` canon+asset fields, `0004` drop dead UI tables, `0005` derivation (`asset_links`), `0006` collections, `0007` comments (`asset_comments`).
@@ -59,4 +60,4 @@ Open http://localhost:5173 → sign up → open a project.
 `ATLAS_PLAN.md`, `PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md` are intentionally untracked scratch/plan notes — ignore for handoff; the source of truth is `PLAN.md` + `ROADMAP.md`.
 
 ## Next up
-Nav shell — replace the growing tab bar with a left rail + slide-overs (matches the design mockups). Engine adapters (Godot/Unity) are deferred until 2–3 verticals exist; they'll consume the export `groups[]`. Phase 3.5 (visual-intelligence spike) is parked — it spends on the shared OpenRouter key. See [ROADMAP.md](ROADMAP.md).
+Semantic-context RAG ("why was this created / what's it for") over briefs / prompts / comments / canon, using the same mock embedder into `semantic_embeddings` — mock-able, no spend. Then nav shell (left rail), and engine adapters (deferred until a 2nd vertical). Swapping the mock embedder for a real text/CLIP model (true semantic "feel") needs a spend go-ahead. See [ROADMAP.md](ROADMAP.md).

@@ -18,13 +18,29 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 3 · PR3 | Smart asset board (filters · search · status language · batch) | ✅ |
 | 3 · PR4 | Collaboration: review queue + comment threads | ✅ |
 | 3 · PR5 | Lineage graph + canon-change propagation | ✅ |
-| 3.5 | Visual intelligence (embeddings/dedup/similar) — **spike-gated** | ⏳ (needs spend go-ahead) |
-| 4 | (per PLAN) deeper RAG / asset intelligence | ⏳ |
+| 3.5 | Visual intelligence — embedding pipeline (search · dedup · find-similar) | ✅ (mock embedder; real text/CLIP model is a swap-in, gated on spend) |
 | 4 | Audio modality — provider boundary + mock WAV + generate/play | ✅ (mock; no hosted provider yet) |
 | 5 · PR1 | Export — generic zip + manifest + pre-export checks | ✅ |
 | 5 · PR2 | Export — role/tag-grouped pack (vertical-neutral) | ✅ |
+| — | Semantic context RAG — "why was this created" over briefs/comments/canon | ⏳ next (mock-able) |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ (deferred — rule of three) |
-| — | **Nav shell (left rail + slide-overs, replace tabs)** | 🚧 next |
+| — | Nav shell (left rail + slide-overs, replace tabs) | ⏳ |
+
+### Done — Phase 3.5 (visual intelligence, mock embeddings)
+Mock-first feature-hashed embedder (`ai/embeddings.rs`, `EMBED_MOCK` default) —
+a real text/CLIP model swaps in behind the same signature (gated on spend).
+- Embed-on-insert across generate / derive / **upload (imports)** / audio;
+  `/embeddings/backfill` indexes anything missing.
+- **Smart search** (`/assets/search?q`) — semantic/keyword ranking in the board.
+- **Pre-generate dedup nudge** (`/assets/similar-check`) — "N similar already
+  exist" with thumbnails before you spend a generation.
+- **Find similar** (`/assets/:id/similar`). `visual_embeddings` store, cosine.
+Verified: query ranks matches over non-matches; dup prompt flagged ~0.89; novel
+prompt → 0 false positives.
+
+Next RAG step: **semantic context** (`semantic_embeddings`) over briefs /
+prompts / comments / canon to answer "why was this created / what's it for" —
+also mock-able with the same embedder.
 
 ## Next: Nav shell (left rail) — or pick the next vertical
 Export is generic and grouped; engine-specific packers (Godot/Unity) are
