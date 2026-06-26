@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { SparkleIcon, SpinnerGapIcon, ImageIcon } from '@phosphor-icons/react'
+import { SparkleIcon, SpinnerGapIcon, ImageIcon, UploadSimpleIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 
@@ -41,6 +41,30 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
     }
   }
 
+  async function upload(file: File) {
+    setBusy(true)
+    setError(null)
+    try {
+      const created = await api.uploadAsset(projectId, file, 'base')
+      setAssets((a) => [created, ...a])
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Upload failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function pickFile() {
+    const inp = document.createElement('input')
+    inp.type = 'file'
+    inp.accept = 'image/*'
+    inp.onchange = () => {
+      const f = inp.files?.[0]
+      if (f) upload(f)
+    }
+    inp.click()
+  }
+
   return (
     <div className="glass flex min-h-0 flex-1 flex-col rounded-[16px]">
       <div className="flex items-center gap-2 border-b border-white/8 px-5 py-4">
@@ -49,6 +73,14 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
         </span>
         <p className="text-sm font-medium text-text">Assets</p>
         <span className="text-sm text-text-dim">· {assets.length}</span>
+        <button
+          onClick={pickFile}
+          disabled={busy}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] border border-white/10 px-3 py-1.5 text-sm text-text-dim transition hover:text-text disabled:opacity-50"
+        >
+          <UploadSimpleIcon size={14} />
+          Upload base
+        </button>
       </div>
 
       <form onSubmit={generate} className="border-b border-white/8 p-4">
@@ -74,19 +106,29 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
         {assets.length === 0 ? (
           <p className="px-1 py-16 text-center text-sm text-text-dim">
-            No assets yet. Describe one above to generate it.
+            No assets yet. Generate one above, or upload a base.
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {assets.map((a) => (
               <figure
                 key={a.id}
-                className="group overflow-hidden rounded-[12px] ring-1 ring-white/10"
-                title={a.prompt ?? ''}
+                className="group relative overflow-hidden rounded-[12px] ring-1 ring-white/10"
+                title={a.prompt ?? a.role ?? ''}
               >
-                <img src={a.url} alt={a.prompt ?? ''} className="aspect-square w-full object-cover" />
-                {a.prompt && (
-                  <figcaption className="truncate px-2 py-1.5 text-[11px] text-text-dim">{a.prompt}</figcaption>
+                <img src={a.url} alt={a.prompt ?? a.role ?? ''} className="aspect-square w-full object-cover" />
+                <span className="absolute left-1.5 top-1.5 rounded-[6px] bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur">
+                  {a.source_kind}
+                </span>
+                {a.status !== 'candidate' && (
+                  <span className="absolute right-1.5 top-1.5 rounded-[6px] bg-teal/80 px-1.5 py-0.5 text-[10px] font-medium text-bg">
+                    {a.status}
+                  </span>
+                )}
+                {(a.prompt ?? a.role) && (
+                  <figcaption className="truncate px-2 py-1.5 text-[11px] text-text-dim">
+                    {a.prompt ?? a.role}
+                  </figcaption>
                 )}
               </figure>
             ))}
