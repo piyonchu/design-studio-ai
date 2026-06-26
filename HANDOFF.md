@@ -28,7 +28,7 @@ Open http://localhost:5173 → sign up → open a project.
 - `ASSET_MOCK=false` + `OPENROUTER_API_KEY=...` → real images (≈$0.04/image).
 - The shared OpenRouter key is **not** in git (`.env` is gitignored) — get it from the team. (~$8.78 left at handoff.)
 
-## What's built (Phase 0–3 complete)
+## What's built (Phases 0–5 + RAG, all mock-mode by default)
 - **Auth** — email+password, httpOnly session cookie, workspace roles.
 - **Projects** (`vertical='game_2d'`) + **Canon** — versioned style rules (Canon tab). Canon feeds both generate + derive prompts.
 - **Assets** — generate (text→image), upload base, **derive** (img2img, base sent as reference) with presets (walk/action/variant/matching). Each derivative records `derived_from` + canon version.
@@ -50,7 +50,7 @@ Open http://localhost:5173 → sign up → open a project.
 - `backend/src/storage.rs` — S3/MinIO (+ inline fallback). `backend/src/models.rs` — all DTOs/rows.
 - `backend/migrations/` — `0001` base, `0002` auth, `0003` canon+asset fields, `0004` drop dead UI tables, `0005` derivation (`asset_links`), `0006` collections, `0007` comments (`asset_comments`).
 - `frontend/src/lib/api.ts` — typed API client (one place for all endpoints).
-- `frontend/src/app/` — `WorkspaceHub`, `ProjectWorkspace` (Canon/Assets/Review/Lineage/Collections tabs), `assets/AssetLibrary` + `AssetInspector` + `ReviewQueue` + `CommentThread` + `LineageView`, `canon/CanonView`, `collections/CollectionsView`, `export/ExportDialog`.
+- `frontend/src/app/` — `WorkspaceHub`, `ProjectWorkspace` (Canon/Assets/Review/Lineage/Collections tabs), `assets/AssetLibrary` + `AssetInspector` + `ReviewQueue` + `CommentThread` + `LineageView`, `canon/CanonView` + `canon/ContextAsk`, `collections/CollectionsView`, `export/ExportDialog`.
 
 ## Conventions
 - **Branch per PR**, ~3 logical commits, merge with `--merge` (no squash unless asked). End commits with the Co-Authored-By trailer.
@@ -61,4 +61,6 @@ Open http://localhost:5173 → sign up → open a project.
 `ATLAS_PLAN.md`, `PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md` are intentionally untracked scratch/plan notes — ignore for handoff; the source of truth is `PLAN.md` + `ROADMAP.md`.
 
 ## Next up
-Semantic-context RAG ("why was this created / what's it for") over briefs / prompts / comments / canon, using the same mock embedder into `semantic_embeddings` — mock-able, no spend. Then nav shell (left rail), and engine adapters (deferred until a 2nd vertical). Swapping the mock embedder for a real text/CLIP model (true semantic "feel") needs a spend go-ahead. See [ROADMAP.md](ROADMAP.md).
+Open candidates (see [ROADMAP.md](ROADMAP.md)): **smart versioning** (autoname / "why did this change") — needs text generation, so mock summarizer now or re-add a text client (a decision); **nav shell** (left rail, replace tabs); **2nd vertical**; **engine adapters** (deferred until a 2nd vertical, will consume the export `groups[]`). Swapping the mock embedder for a real text/CLIP model (true semantic "feel") needs a spend go-ahead.
+
+> Migrations note: the embedding stores (`semantic_embeddings` 1024-d, `visual_embeddings` 768-d) ship from `0001` with placeholder dims; the mock embedder matches them. Reconcile dims when a real model is chosen.
