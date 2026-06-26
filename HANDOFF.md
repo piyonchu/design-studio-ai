@@ -63,7 +63,7 @@ Open http://localhost:5173 → sign up → open a project.
 ## Conventions
 - **Branch per PR**, ~3 logical commits, merge with `--merge` (no squash unless asked). End commits with the Co-Authored-By trailer.
 - Verify every change: `cargo build` + `cargo test` + a curl smoke test (backend), `tsc -b` + `npm run build` (frontend).
-- **Tests + CI:** `cargo test` runs 18 DB-free unit tests over the core pure logic (embeddings, canon diff, export slug, WAV, cache key, llm prompt, verticals, compile_prompt). GitHub Actions (`.github/workflows/ci.yml`) runs backend build+test and frontend build on push/PR — no DB or secrets needed (runtime sqlx + mock-default AI).
+- **Tests + CI:** `cargo test` runs **26 DB-free unit tests** over the core pure logic (embeddings, canon diff, export slug, WAV, cache key, llm prompt, verticals, compile_prompt, godot/unity packers). A **DB-backed integration test** (`backend/tests/api.rs`, `#[ignore]`'d) drives the real router in-process via `tower::oneshot` through signup → workspace → project → generate → all three export packs + the 400 paths (mock AI, inline storage); run it with `cargo test -- --ignored` (needs Postgres). The crate is split bin (`main.rs`) + lib (`lib.rs`, exposes `app(state)`) so tests build the same app. GitHub Actions (`.github/workflows/ci.yml`): a DB-free `backend` job (build+test) + a frontend job (always), plus an `integration` job with a `pgvector/pgvector:pg16` service that runs the `--ignored` tests. No secrets (runtime sqlx + mock-default AI).
 - `git pull` has a quirky upstream config on some branches — if it errors, use `git merge --ff-only @{u}`.
 
 ## Not in git (local-only planning docs)

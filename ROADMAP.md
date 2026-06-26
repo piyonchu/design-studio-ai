@@ -32,7 +32,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | Style-fit score — embedding similarity to approved assets, shown at review | ✅ |
 | 6 | 2nd vertical — **manhwa/webtoon** (config-only; proves core generalizes) | ✅ |
 | — | **Vertical-adapter framework** — registry per side (BE prompt rules + validation; FE picker single-source); 3rd vertical **illustration** | ✅ |
-| — | Test suite (18 unit tests over core logic) + GitHub Actions CI | ✅ |
+| — | Test suite — 26 DB-free unit tests + a DB-backed API integration test (oneshot) + CI | ✅ |
 | — | Activity feed — merged asset/comment/canon timeline (Activity tab) | ✅ |
 | — | Engine adapters — **Godot 4 + Unity** import-ready packs (per-vertical `engines` hook, game_2d) | ✅ (Unity format-validated, not editor-tested) |
 | — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
@@ -63,7 +63,7 @@ Asset-level autoname (display names) is a possible follow-up.
 
 ## Where it stands (2026-06-27)
 Phases 0–5 + RAG/LLM + audio + verticals framework + real AI are **done and
-merged** (PR #17, `main` @ `8f8e8d5`); 18 unit tests + CI green. Open candidates,
+merged** (PR #17, `main` @ `8f8e8d5`); 26 unit tests + a DB-backed integration test + CI green. Open candidates,
 all decision/spend-gated — confirm before starting:
 - **Engine export adapters** — **Godot 4 + Unity done** (per-vertical `engines`
   list hook on the registry; game_2d declares both). Godot pack: textures +
