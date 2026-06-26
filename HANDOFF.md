@@ -45,6 +45,7 @@ Open http://localhost:5173 → sign up → open a project.
 - **Smart versioning** — each canon version gets an auto-generated deterministic "what changed" note (`canon.change_note`, mig 0008); `GET /canon/history` + a version-history list in the Canon tab. No LLM.
 - **Asset naming** — `assets.name` (mig 0009, editable in the inspector) with an auto-derived display label (`api.displayName`, role+prompt) used across board/lineage/review; the name drives the export filename.
 - **Audio** — `POST /projects/:id/audio` generates `kind='audio'` assets via `ai/audio.rs` (mock WAV synth; `AUDIO_MOCK=true` default, no hosted provider yet). The board has an image/audio toggle; clips play inline in the grid + inspector.
+- **Verticals** — `frontend/src/app/verticals.ts` holds the only domain-specific config (derive presets + canon hints per vertical: `game_2d`, `manhwa`). Project create picks a vertical (`projects.vertical`); board derive-presets + canon fields adapt. Adding manhwa needed zero core changes — rule-of-three is met, so a vertical-adapter framework can now be extracted.
 - **Export** — pre-export checks (`POST /export/check`: filename, format/dimensions/alpha, issues) + a grouped zip pack (`POST /export`: `manifest.json` with `groups[]` by role/tag + `assets/<group>/<file>`, rejected/undecodable skipped). Triggered from a collection via the Export dialog. Vertical-neutral; engine-specific packers (Godot/Unity) are deferred per PLAN (rule of three) and will consume the grouped manifest.
 
 ## Code map
@@ -64,6 +65,6 @@ Open http://localhost:5173 → sign up → open a project.
 `ATLAS_PLAN.md`, `PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md` are intentionally untracked scratch/plan notes — ignore for handoff; the source of truth is `PLAN.md` + `ROADMAP.md`.
 
 ## Next up
-Open candidates (see [ROADMAP.md](ROADMAP.md)): **2nd vertical** (manhwa/illustration/marketing — a "which one" decision); **engine adapters** (deferred until a 2nd vertical, will consume the export `groups[]`); **LLM answer-synthesis** on top of the "Ask this project" retrieval, and a **real text/CLIP embedder** for true semantic "feel" — both need a shared-key spend go-ahead.
+Open candidates (see [ROADMAP.md](ROADMAP.md)): **extract a vertical-adapter framework** (rule of three is now met with game + manhwa); **engine export adapters** (Godot/Unity, consume the export `groups[]`); a **3rd vertical** (illustration/marketing — pure config like manhwa); **animation** (frame sequences — own spike, real-model spend); swapping the mock embedder for a **real text/CLIP model** (true semantic "feel" — shared-key spend).
 
 > Migrations note: the embedding stores (`semantic_embeddings` 1024-d, `visual_embeddings` 768-d) ship from `0001` with placeholder dims; the mock embedder matches them. Reconcile dims when a real model is chosen.
