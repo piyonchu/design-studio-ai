@@ -228,3 +228,22 @@ pub struct CreateCollection {
 pub struct AddItems {
     pub asset_ids: Vec<Uuid>,
 }
+
+// ── Comments (collaboration) ─────────────────────────────────────────────────
+
+/// A comment on an asset, with the author's email joined for display. The
+/// author is nullable: a deleted account leaves the discussion intact.
+#[derive(Debug, Serialize, FromRow)]
+pub struct AssetComment {
+    pub id: Uuid,
+    pub asset_id: Uuid,
+    pub author_id: Option<Uuid>,
+    pub author_email: Option<String>,
+    pub body: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateComment {
+    pub body: String,
+}
