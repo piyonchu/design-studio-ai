@@ -303,6 +303,18 @@ pub struct ReconcileRequest {
     pub asset_ids: Vec<Uuid>,
 }
 
+// ── Activity feed ────────────────────────────────────────────────────────────
+
+/// One entry in a project's merged activity stream (asset / comment / canon).
+#[derive(Debug, Serialize)]
+pub struct ActivityEvent {
+    pub kind: String, // "asset" | "comment" | "canon"
+    pub at: DateTime<Utc>,
+    pub summary: String,
+    /// Set for asset + comment events so the UI can jump to the asset.
+    pub asset_id: Option<Uuid>,
+}
+
 // ── Search / RAG ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]

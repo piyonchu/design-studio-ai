@@ -1,3 +1,4 @@
+mod activity;
 mod assets;
 mod audio;
 mod auth;
@@ -33,4 +34,5 @@ pub fn router() -> Router<AppState> {
         .merge(search::router())
         .merge(context::router())
         .merge(recipes::router())
+        .merge(activity::router())
 }
