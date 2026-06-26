@@ -117,6 +117,8 @@ export interface Asset {
   status: AssetStatus
   tags: string[]
   source_kind: string // 'uploaded' | 'seeded' | 'derived'
+  derivation: string | null // for derivatives: the preset/instruction used
+  canon_version_id: string | null
   created_at: string
 }
 
@@ -127,6 +129,25 @@ export const generateAssets = (projectId: string, prompt: string, count = 1) =>
   request<Asset[]>(`/projects/${projectId}/assets`, {
     method: 'POST',
     body: JSON.stringify({ prompt, count }),
+  })
+
+/** Derive variants from a base asset, conditioned on the base + current canon. */
+export const deriveAssets = (
+  projectId: string,
+  baseId: string,
+  instruction: string,
+  count = 1,
+) =>
+  request<Asset[]>(`/projects/${projectId}/assets/${baseId}/derive`, {
+    method: 'POST',
+    body: JSON.stringify({ instruction, count }),
+  })
+
+/** Approve / reject / flag a candidate (the review gate). */
+export const setAssetStatus = (assetId: string, status: AssetStatus) =>
+  request<Asset>(`/assets/${assetId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
   })
 
 /** Upload a base/reference image. Raw bytes body, not multipart. */
