@@ -191,3 +191,45 @@ export const uploadAsset = async (
   }
   return body as Asset
 }
+
+// ── Collections ────────────────────────────────────────────────────────────────
+export interface CollectionSummary {
+  id: string
+  name: string
+  item_count: number
+  cover_asset_id: string | null
+  created_at: string
+}
+export interface Collection {
+  id: string
+  project_id: string
+  name: string
+  cover_asset_id: string | null
+  created_at: string
+}
+export interface CollectionDetail extends Collection {
+  assets: Asset[]
+}
+
+export const listCollections = (projectId: string) =>
+  request<CollectionSummary[]>(`/projects/${projectId}/collections`)
+
+export const createCollection = (projectId: string, name: string) =>
+  request<Collection>(`/projects/${projectId}/collections`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+
+export const getCollection = (id: string) => request<CollectionDetail>(`/collections/${id}`)
+
+export const addToCollection = (id: string, assetIds: string[]) =>
+  request<void>(`/collections/${id}/items`, {
+    method: 'POST',
+    body: JSON.stringify({ asset_ids: assetIds }),
+  })
+
+export const removeFromCollection = (id: string, assetId: string) =>
+  request<void>(`/collections/${id}/items/${assetId}`, { method: 'DELETE' })
+
+export const deleteCollection = (id: string) =>
+  request<void>(`/collections/${id}`, { method: 'DELETE' })
