@@ -57,9 +57,23 @@ async fn generate(
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
     let count = body.count.unwrap_or(1).clamp(1, 4);
 
+    // Seed against the current canon so generated bases follow the project's
+    // style from the start. The model gets the compiled prompt; the asset keeps
+    // the raw text (for a clean caption) + the canon version it was made under.
+    let canon: Option<(Uuid, Value)> = sqlx::query_as(
+        "SELECT id, data FROM canon WHERE project_id = $1 ORDER BY version DESC LIMIT 1",
+    )
+    .bind(project_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (canon_id, prompt) = match &canon {
+        Some((id, data)) => (Some(*id), compile_prompt(&body.prompt, data)),
+        None => (None, body.prompt.clone()),
+    };
+
     let mut assets = Vec::with_capacity(count as usize);
     for n in 0..count as usize {
-        let img = ai::images::generate_image(&body.prompt, n).await?;
+        let img = ai::images::generate_image(&prompt, n).await?;
 
         // Object storage when configured; otherwise store the image inline as a
         // data URL so the app still works with no object store.
@@ -73,13 +87,14 @@ async fn generate(
         };
 
         let asset = sqlx::query_as::<_, Asset>(&format!(
-            "INSERT INTO assets (project_id, kind, s3_key, mime_type, prompt, source_kind)
-             VALUES ($1, 'image', $2, $3, $4, 'seeded') RETURNING {ASSET_COLS}"
+            "INSERT INTO assets (project_id, kind, s3_key, mime_type, prompt, source_kind, canon_version_id)
+             VALUES ($1, 'image', $2, $3, $4, 'seeded', $5) RETURNING {ASSET_COLS}"
         ))
         .bind(project_id)
         .bind(&s3_key)
         .bind(&img.mime)
         .bind(&body.prompt)
+        .bind(canon_id)
         .fetch_one(&state.pool)
         .await?;
         assets.push(with_url(asset));
