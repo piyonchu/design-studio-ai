@@ -85,8 +85,13 @@ export interface Canon {
   parent_id: string | null
   version: number
   data: unknown // { style: {...}, negative: [...], exemplar_asset_ids: [...] }
+  change_note: string | null // auto-generated diff vs the previous version
   created_at: string
 }
+
+/** Full canon version history, newest first (each with its change note). */
+export const getCanonHistory = (projectId: string) =>
+  request<Canon[]>(`/projects/${projectId}/canon/history`)
 
 /** Current canon, or null if none defined yet (backend 404). */
 export const getCanon = (projectId: string) =>
