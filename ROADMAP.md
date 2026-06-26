@@ -25,7 +25,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 3.5 PR2 | Semantic context RAG — "Ask this project" over briefs/prompts/comments/canon | ✅ (mock; retrieval-only) |
 | — | Smart versioning — auto canon change-notes (deterministic diff) + history | ✅ |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ (deferred — rule of three) |
-| — | Nav shell (left rail + slide-overs, replace tabs) | ⏳ |
+| — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
 
 ### Done — Phase 3.5 (visual intelligence, mock embeddings)
 Mock-first feature-hashed embedder (`ai/embeddings.rs`, `EMBED_MOCK` default) —

@@ -51,7 +51,7 @@ Open http://localhost:5173 → sign up → open a project.
 - `backend/src/storage.rs` — S3/MinIO (+ inline fallback). `backend/src/models.rs` — all DTOs/rows.
 - `backend/migrations/` — `0001` base, `0002` auth, `0003` canon+asset fields, `0004` drop dead UI tables, `0005` derivation (`asset_links`), `0006` collections, `0007` comments, `0008` canon change-note.
 - `frontend/src/lib/api.ts` — typed API client (one place for all endpoints).
-- `frontend/src/app/` — `WorkspaceHub`, `ProjectWorkspace` (Canon/Assets/Review/Lineage/Collections tabs), `assets/AssetLibrary` + `AssetInspector` + `ReviewQueue` + `CommentThread` + `LineageView`, `canon/CanonView` + `canon/ContextAsk`, `collections/CollectionsView`, `export/ExportDialog`.
+- `frontend/src/app/` — `WorkspaceHub`, `ProjectWorkspace` (left-rail nav: Board/Canon/Review/Lineage/Collections), `assets/AssetLibrary` + `AssetInspector` + `ReviewQueue` + `CommentThread` + `LineageView`, `canon/CanonView` + `canon/ContextAsk`, `collections/CollectionsView`, `export/ExportDialog`.
 
 ## Conventions
 - **Branch per PR**, ~3 logical commits, merge with `--merge` (no squash unless asked). End commits with the Co-Authored-By trailer.
