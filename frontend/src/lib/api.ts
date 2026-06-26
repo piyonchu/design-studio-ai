@@ -47,36 +47,6 @@ export interface Project {
   created_at: string
 }
 
-export type ArtifactKind =
-  | 'idea'
-  | 'user_flow'
-  | 'wireframe'
-  | 'design_system'
-  | 'ui_screen'
-export type ChangeSource = 'manual' | 'ai' | 'import'
-
-export interface Artifact {
-  id: string
-  project_id: string
-  kind: ArtifactKind
-  name: string
-  head_version_id: string | null
-  created_at: string
-}
-export interface ArtifactVersion {
-  id: string
-  artifact_id: string
-  parent_id: string | null
-  content: unknown
-  change_source: ChangeSource
-  change_summary: string | null
-  prompt: string | null
-  created_at: string
-}
-export interface ArtifactWithHead extends Artifact {
-  head_version: ArtifactVersion | null
-}
-
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export const signup = (email: string, password: string, workspace_name?: string) =>
   request<{ user: User; workspace: Workspace }>('/auth/signup', {
@@ -108,22 +78,6 @@ export const createProject = (workspaceId: string, name: string, brief?: string)
 
 export const getProject = (id: string) => request<Project>(`/projects/${id}`)
 
-// ── Artifacts ─────────────────────────────────────────────────────────────────
-export const listArtifacts = (projectId: string) =>
-  request<Artifact[]>(`/projects/${projectId}/artifacts`)
-
-export const getArtifact = (id: string) =>
-  request<ArtifactWithHead>(`/artifacts/${id}`)
-
-export const addVersion = (
-  artifactId: string,
-  body: { content: unknown; change_source: ChangeSource; change_summary?: string },
-) =>
-  request<ArtifactVersion>(`/artifacts/${artifactId}/versions`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
-
 // ── Canon (versioned style rules + exemplars) ──────────────────────────────────
 export interface Canon {
   id: string
@@ -154,7 +108,6 @@ export type AssetStatus = 'candidate' | 'approved' | 'rejected' | 'needs_review'
 export interface Asset {
   id: string
   project_id: string
-  screen_id: string | null
   kind: string
   s3_key: string // object-storage key (or data/http URL in inline mode)
   url: string // stable, browser-usable image URL — use for <img src> / props.src
@@ -174,12 +127,6 @@ export const generateAssets = (projectId: string, prompt: string, count = 1) =>
   request<Asset[]>(`/projects/${projectId}/assets`, {
     method: 'POST',
     body: JSON.stringify({ prompt, count }),
-  })
-
-export const attachAsset = (assetId: string, screenArtifactId: string) =>
-  request<Asset>(`/assets/${assetId}/attach`, {
-    method: 'POST',
-    body: JSON.stringify({ screen_artifact_id: screenArtifactId }),
   })
 
 /** Upload a base/reference image. Raw bytes body, not multipart. */

@@ -1,0 +1,4 @@
+# Keep SQL migrations LF so sqlx migration checksums stay stable across OSes.
+# Windows CRLF conversion otherwise changes the checksum and sqlx rejects the
+# migration with "migration N was previously applied but has been modified".
+*.sql text eol=lf
