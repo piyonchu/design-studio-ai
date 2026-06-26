@@ -2,6 +2,7 @@ mod ai;
 mod auth;
 mod db;
 mod error;
+mod export;
 mod models;
 mod ratelimit;
 mod routes;

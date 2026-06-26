@@ -360,6 +360,11 @@ pub struct ScoredAsset {
 #[derive(Debug, Deserialize)]
 pub struct ExportRequest {
     pub asset_ids: Vec<Uuid>,
+    /// Optional engine target. `None`/`"generic"` → the vertical-neutral zip;
+    /// `"godot"` (when the project's vertical declares that engine) → an
+    /// import-ready Godot pack. Validated against the vertical at export time.
+    #[serde(default)]
+    pub target: Option<String>,
 }
 
 /// One asset's pre-export verdict: the filename it would get in the pack, its

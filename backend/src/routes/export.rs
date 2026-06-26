@@ -194,8 +194,8 @@ async fn export(
 ) -> Result<impl IntoResponse, AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
 
-    let project_name: String =
-        sqlx::query_scalar("SELECT name FROM projects WHERE id = $1")
+    let (project_name, vertical): (String, String) =
+        sqlx::query_as("SELECT name, vertical FROM projects WHERE id = $1")
             .bind(project_id)
             .fetch_optional(&state.pool)
             .await?
@@ -206,6 +206,23 @@ async fn export(
     .bind(project_id)
     .fetch_optional(&state.pool)
     .await?;
+
+    // Resolve the export target against the project's vertical. Absent/"generic"
+    // → the vertical-neutral pack; a known engine tag is only allowed if the
+    // vertical declares that engine (the per-vertical export-adapter hook).
+    let engine = match body.target.as_deref() {
+        None | Some("") | Some("generic") => None,
+        Some(tag) => {
+            let e = crate::verticals::Engine::from_tag(tag)
+                .ok_or_else(|| AppError::BadRequest(format!("unknown export target '{tag}'")))?;
+            if crate::verticals::get(&vertical).engine != Some(e) {
+                return Err(AppError::BadRequest(format!(
+                    "vertical '{vertical}' has no '{tag}' export target"
+                )));
+            }
+            Some(e)
+        }
+    };
 
     let checked = gather(&state, project_id, &body.asset_ids).await?;
 
@@ -236,6 +253,7 @@ async fn export(
         "project": project_name,
         "canon_version": canon_version,
         "exported_at": chrono::Utc::now().to_rfc3339(),
+        "target": engine.map(|e| e.tag()).unwrap_or("generic"),
         "asset_count": included.len(),
         "groups": groups,
         "assets": included.iter().map(|(c, _)| serde_json::json!({
@@ -271,12 +289,47 @@ async fn export(
             zip.write_all(bytes)
                 .map_err(|e| AppError::Internal(format!("zip: {e}")))?;
         }
+
+        // Engine adapter: emit the import-ready scaffolding alongside the assets.
+        if engine == Some(crate::verticals::Engine::Godot) {
+            use crate::export::godot;
+            let mut extra: Vec<godot::TextFile> = Vec::new();
+            // A `<asset>.import` next to each texture so Godot imports it with
+            // our 2D-sprite settings (it fills the local cache pointer itself).
+            for (c, _) in &included {
+                let asset_path = path_of(c);
+                extra.push(godot::TextFile {
+                    path: format!("{asset_path}.import"),
+                    contents: godot::texture_import(&asset_path),
+                });
+            }
+            let group_counts: Vec<(String, usize)> = group_order
+                .iter()
+                .map(|g| (g.clone(), included.iter().filter(|(c, _)| &c.group == g).count()))
+                .collect();
+            extra.push(godot::TextFile {
+                path: "project.godot".into(),
+                contents: godot::project_godot(&project_name),
+            });
+            extra.push(godot::TextFile {
+                path: "README.md".into(),
+                contents: godot::readme(&project_name, canon_version, &group_counts),
+            });
+            for f in &extra {
+                zip.start_file(&f.path, opts)
+                    .map_err(|e| AppError::Internal(format!("zip: {e}")))?;
+                zip.write_all(f.contents.as_bytes())
+                    .map_err(|e| AppError::Internal(format!("zip: {e}")))?;
+            }
+        }
+
         zip.finish()
             .map_err(|e| AppError::Internal(format!("zip: {e}")))?
             .into_inner()
     };
 
-    let fname = format!("{}-pack.zip", slug(&project_name));
+    let suffix = engine.map(|e| format!("-{}", e.tag())).unwrap_or_default();
+    let fname = format!("{}{suffix}-pack.zip", slug(&project_name));
     Ok((
         [
             (header::CONTENT_TYPE, "application/zip".to_string()),
