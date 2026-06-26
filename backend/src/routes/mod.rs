@@ -4,6 +4,7 @@ mod auth;
 mod canon;
 mod collections;
 mod comments;
+mod context;
 mod export;
 mod lineage;
 mod projects;
@@ -29,4 +30,5 @@ pub fn router() -> Router<AppState> {
         .merge(lineage::router())
         .merge(export::router())
         .merge(search::router())
+        .merge(context::router())
 }

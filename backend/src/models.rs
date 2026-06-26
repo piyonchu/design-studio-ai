@@ -283,6 +283,16 @@ pub struct SimilarCheck {
     pub prompt: String,
 }
 
+/// A semantic-context snippet (brief / asset prompt / comment / canon) with its
+/// relevance to the question. Powers "why was this created / what's it for".
+#[derive(Debug, Serialize, FromRow)]
+pub struct ContextHit {
+    pub source_kind: String,
+    pub source_id: Option<Uuid>,
+    pub content: String,
+    pub score: f64,
+}
+
 /// An asset plus its similarity score (cosine, 1.0 = identical) for search,
 /// "find similar", and the pre-generate dedup nudge.
 #[derive(Debug, Serialize, FromRow)]

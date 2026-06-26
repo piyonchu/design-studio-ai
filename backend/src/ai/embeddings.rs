@@ -13,8 +13,10 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::models::Asset;
 
-/// Vector dimensions match the schema (`visual_embeddings` = 768).
+/// Vector dimensions match the schema (`visual_embeddings` = 768,
+/// `semantic_embeddings` = 1024).
 pub const VISUAL_DIM: usize = 768;
+pub const SEMANTIC_DIM: usize = 1024;
 pub const MODEL: &str = "mock-bow-v1";
 
 fn embed_mock() -> bool {
@@ -114,10 +116,65 @@ pub async fn index_asset(pool: &PgPool, asset_id: Uuid, caption: &str) -> Result
     Ok(())
 }
 
-/// Best-effort index: log and swallow errors so generation/upload never 500s on
-/// an embedding hiccup.
+/// Best-effort index of an asset across BOTH stores: the visual embedding (for
+/// search/dedup) and a semantic-context row for its prompt/derivation (so
+/// "why does this asset exist?" retrieval can find it). Never fails the caller.
 pub async fn index_asset_soft(pool: &PgPool, a: &Asset) {
     if let Err(e) = index_asset(pool, a.id, &caption_from(a)).await {
-        tracing::warn!(error = %e, asset = %a.id, "asset embedding failed (non-fatal)");
+        tracing::warn!(error = %e, asset = %a.id, "asset visual embedding failed (non-fatal)");
+    }
+    let rationale = a.prompt.as_deref().or(a.derivation.as_deref());
+    if let Some(text) = rationale {
+        if let Err(e) = index_semantic(pool, a.project_id, "asset_prompt", Some(a.id), text).await {
+            tracing::warn!(error = %e, asset = %a.id, "asset semantic embedding failed (non-fatal)");
+        }
+    }
+}
+
+/// Index a text snippet into the semantic-context store. Re-indexing the same
+/// (source_kind, source_id) replaces the old row. No-op when empty / no embedder.
+pub async fn index_semantic(
+    pool: &PgPool,
+    project_id: Uuid,
+    source_kind: &str,
+    source_id: Option<Uuid>,
+    content: &str,
+) -> Result<(), AppError> {
+    let Some(v) = embed_text(content, SEMANTIC_DIM) else {
+        return Ok(());
+    };
+    let pg = to_pgvector(&v);
+    if let Some(sid) = source_id {
+        sqlx::query("DELETE FROM semantic_embeddings WHERE source_kind = $1 AND source_id = $2")
+            .bind(source_kind)
+            .bind(sid)
+            .execute(pool)
+            .await?;
+    }
+    sqlx::query(
+        "INSERT INTO semantic_embeddings (project_id, source_kind, source_id, content, embedding, model)
+         VALUES ($1, $2, $3, $4, $5::vector, $6)",
+    )
+    .bind(project_id)
+    .bind(source_kind)
+    .bind(source_id)
+    .bind(content)
+    .bind(pg)
+    .bind(MODEL)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Fire-and-forget semantic index (logs on failure).
+pub async fn index_semantic_soft(
+    pool: &PgPool,
+    project_id: Uuid,
+    source_kind: &str,
+    source_id: Option<Uuid>,
+    content: &str,
+) {
+    if let Err(e) = index_semantic(pool, project_id, source_kind, source_id, content).await {
+        tracing::warn!(error = %e, kind = source_kind, "semantic embedding failed (non-fatal)");
     }
 }

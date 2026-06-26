@@ -70,6 +70,14 @@ async fn create(
     .bind(text)
     .fetch_one(&state.pool)
     .await?;
+    crate::ai::embeddings::index_semantic_soft(
+        &state.pool,
+        project_id,
+        "comment",
+        Some(comment.id),
+        text,
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(comment)))
 }
 
