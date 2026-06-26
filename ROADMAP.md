@@ -31,7 +31,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | Batch derive — "Derive all" runs every preset → a whole set in one click | ✅ |
 | — | Style-fit score — embedding similarity to approved assets, shown at review | ✅ |
 | 6 | 2nd vertical — **manhwa/webtoon** (config-only; proves core generalizes) | ✅ |
-| — | Extract a vertical-adapter framework now 2 verticals exist (rule of three met) | ⏳ next-eligible |
+| — | **Vertical-adapter framework** — registry per side (BE prompt rules + validation; FE picker single-source); 3rd vertical **illustration** | ✅ |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ |
 | — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
 
