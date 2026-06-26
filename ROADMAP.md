@@ -29,6 +29,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | **Exemplar loop** — approved assets condition future generation (moat closed) | ✅ |
 | — | Generation recipes — reusable derivation templates (apply/save in derive panel) | ✅ |
 | — | Batch derive — "Derive all" runs every preset → a whole set in one click | ✅ |
+| — | Style-fit score — embedding similarity to approved assets, shown at review | ✅ |
 | 6 | 2nd vertical — **manhwa/webtoon** (config-only; proves core generalizes) | ✅ |
 | — | Extract a vertical-adapter framework now 2 verticals exist (rule of three met) | ⏳ next-eligible |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ |
