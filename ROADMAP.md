@@ -23,6 +23,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 5 · PR1 | Export — generic zip + manifest + pre-export checks | ✅ |
 | 5 · PR2 | Export — role/tag-grouped pack (vertical-neutral) | ✅ |
 | 3.5 PR2 | Semantic context RAG — "Ask this project" over briefs/prompts/comments/canon | ✅ (mock; retrieval-only) |
+| — | Smart versioning — auto canon change-notes (deterministic diff) + history | ✅ |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ (deferred — rule of three) |
 | — | Nav shell (left rail + slide-overs, replace tabs) | ⏳ |
 
@@ -44,9 +45,11 @@ comment / canon) for a question — `semantic_embeddings`, same mock embedder.
 `/context?q` + `/context/backfill`; box atop the Canon tab. Retrieval-only; an
 LLM synthesis layer (true generated answers) can sit on top later.
 
-Remaining RAG idea: **smart versioning** (autoname / "why did this change") —
-needs *text generation* (the Anthropic client was removed in the pivot), so
-it's a mock summarizer now or re-add a text client. A decision for the user.
+### Done — Smart versioning (canon change notes)
+Canon versions now carry an auto-generated **deterministic diff** note ("palette:
+'…' → '…'; set perspective to '…'; +1 negative") — no LLM, more honest than a
+guess. `GET /canon/history` + a version-history list in the Canon tab.
+Asset-level autoname (display names) is a possible follow-up.
 
 ## Next: Nav shell (left rail) — or pick the next vertical
 Export is generic and grouped; engine-specific packers (Godot/Unity) are
