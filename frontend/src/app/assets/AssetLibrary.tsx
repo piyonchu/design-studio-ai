@@ -12,6 +12,7 @@ import {
   StackPlusIcon,
   PackageIcon,
   MusicNotesIcon,
+  WarningIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
@@ -63,6 +64,10 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
 
   // Filters
   const [query, setQuery] = useState('')
+  // Server-side smart-search hits (null = no active search → show all assets).
+  const [searchHits, setSearchHits] = useState<api.Asset[] | null>(null)
+  // Pre-generate dedup nudge: existing assets close to the typed prompt.
+  const [dupHits, setDupHits] = useState<api.ScoredAsset[]>([])
   const [roles, setRoles] = useState<Set<string>>(new Set())
   const [statuses, setStatuses] = useState<Set<api.AssetStatus>>(new Set())
   const [sources, setSources] = useState<Set<string>>(new Set())
@@ -80,6 +85,33 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
     api.listAssets(projectId).then(setAssets).catch(() => {})
     api.listCollections(projectId).then(setCollections).catch(() => {})
   }, [projectId])
+
+  // Debounced smart search — server-side semantic/keyword ranking. Empty query
+  // clears hits and falls back to the full (client-filtered) library.
+  useEffect(() => {
+    const q = query.trim()
+    if (!q) {
+      setSearchHits(null)
+      return
+    }
+    const t = setTimeout(() => {
+      api.searchAssets(projectId, q).then(setSearchHits).catch(() => setSearchHits(null))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [query, projectId, assets])
+
+  // Debounced pre-generate dedup nudge (image mode only).
+  useEffect(() => {
+    const p = prompt.trim()
+    if (genMode !== 'image' || baseId || p.length < 4) {
+      setDupHits([])
+      return
+    }
+    const t = setTimeout(() => {
+      api.similarCheck(projectId, p).then(setDupHits).catch(() => setDupHits([]))
+    }, 500)
+    return () => clearTimeout(t)
+  }, [prompt, genMode, baseId, projectId])
 
   // Lazily load member ids when a collection filter is selected.
   useEffect(() => {
@@ -109,20 +141,18 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
   }, [assets])
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    // When a search is active, server hits are the base (already ranked); the
+    // rail filters narrow further. No client text-match — the server ranks.
+    const base = searchHits ?? assets
     const members = collectionId ? collMembers[collectionId] : null
-    return assets.filter((a) => {
+    return base.filter((a) => {
       if (roles.size && (!a.role || !roles.has(a.role))) return false
       if (statuses.size && !statuses.has(a.status)) return false
       if (sources.size && !sources.has(a.source_kind)) return false
       if (collectionId && !(members?.has(a.id) ?? false)) return false
-      if (q) {
-        const hay = [a.role, a.prompt, a.derivation, a.kind, ...a.tags].filter(Boolean).join(' ').toLowerCase()
-        if (!hay.includes(q)) return false
-      }
       return true
     })
-  }, [assets, query, roles, statuses, sources, collectionId, collMembers])
+  }, [assets, searchHits, roles, statuses, sources, collectionId, collMembers])
 
   const activeFilters = roles.size + statuses.size + sources.size + (collectionId ? 1 : 0) + (query.trim() ? 1 : 0)
 
@@ -163,6 +193,7 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
           : await api.generateAssets(projectId, p, 2)
       setAssets((a) => [...created, ...a])
       setPrompt('')
+      setDupHits([])
     } catch (err) {
       genError(err)
     } finally {
@@ -546,6 +577,34 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
         )}
 
         {error && <p className="px-5 pt-3 text-xs text-rose-300">{error}</p>}
+
+        {!selecting && !baseId && dupHits.length > 0 && (
+          <div className="mx-5 mt-3 flex items-center gap-3 rounded-[10px] border border-amber-400/25 bg-amber-400/8 px-3 py-2">
+            <WarningIcon size={16} weight="fill" className="shrink-0 text-amber-300" />
+            <p className="shrink-0 text-xs text-amber-100">
+              {dupHits.length} similar asset{dupHits.length > 1 ? 's' : ''} already exist
+            </p>
+            <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
+              {dupHits.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setInspectId(s.id)}
+                  title={`${s.prompt ?? s.role ?? ''} · ${Math.round(s.score * 100)}% match`}
+                  className="size-9 shrink-0 overflow-hidden rounded-[7px] ring-1 ring-white/15 transition hover:ring-teal"
+                >
+                  <img src={s.url} alt="" className="size-full object-cover" />
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setDupHits([])}
+              aria-label="Dismiss"
+              className="shrink-0 text-text-dim hover:text-text"
+            >
+              <XIcon size={14} />
+            </button>
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           {assets.length === 0 ? (

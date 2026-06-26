@@ -241,6 +241,30 @@ export const removeFromCollection = (id: string, assetId: string) =>
 export const deleteCollection = (id: string) =>
   request<void>(`/collections/${id}`, { method: 'DELETE' })
 
+// ── Search / RAG ─────────────────────────────────────────────────────────────
+export interface ScoredAsset extends Asset {
+  score: number
+}
+
+/** Smart (semantic/keyword) search over the project's assets. */
+export const searchAssets = (projectId: string, q: string) =>
+  request<ScoredAsset[]>(`/projects/${projectId}/assets/search?q=${encodeURIComponent(q)}`)
+
+/** Pre-generate dedup: assets close to this prompt that already exist. */
+export const similarCheck = (projectId: string, prompt: string) =>
+  request<ScoredAsset[]>(`/projects/${projectId}/assets/similar-check`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt }),
+  })
+
+/** Assets visually similar to a given one. */
+export const similarAssets = (assetId: string) =>
+  request<ScoredAsset[]>(`/assets/${assetId}/similar`)
+
+/** Index any assets in the project lacking an embedding (covers imports). */
+export const backfillEmbeddings = (projectId: string) =>
+  request<{ indexed: number }>(`/projects/${projectId}/embeddings/backfill`, { method: 'POST' })
+
 // ── Comments (collaboration) ─────────────────────────────────────────────────
 export interface AssetComment {
   id: string
