@@ -20,15 +20,24 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 3 · PR5 | Lineage graph + canon-change propagation | ✅ |
 | 3.5 | Visual intelligence (embeddings/dedup/similar) — **spike-gated** | ⏳ (needs spend go-ahead) |
 | 4 | (per PLAN) deeper RAG / asset intelligence | ⏳ |
-| **5** | **Export — Godot pack first, then Unity** | 🚧 next |
+| 5 · PR1 | Export — generic zip + manifest + pre-export checks | ✅ |
+| **5 · PR2** | **Export — Godot package (then Unity)** | 🚧 next |
 | — | Nav shell (left rail + slide-overs, replace tabs) | ⏳ |
 
-## Next: Phase 5 — Export (the wedge)
-Phase 3 is complete. Next concrete, no-spend slice is **export** (Phase 3.5
-visual-intelligence is parked — it needs a spike that spends on the shared key,
-so it waits for a go-ahead). Export:
-- Pick assets / a collection → zip + `manifest.json` (generic).
-- Pre-export deterministic checks (alpha / sizes / naming) with pass/fail.
+## Next: Phase 5 PR2 — Godot package
+Generic export (PR1) shipped. Next: a **Godot-ready** package — engine-native
+layout (e.g. a `.tres`/sprite-atlas or per-asset `.import` stubs + a folder
+structure Godot recognizes), selectable as an export target alongside the
+generic zip. Unity after. (Phase 3.5 visual-intelligence stays parked — its
+spike spends on the shared key, so it waits for a go-ahead.)
+
+### Done — Phase 5 PR1 (generic export)
+- **Pre-export checks** — `POST /projects/:id/export/check`: per-asset filename,
+  decoded format/dimensions/alpha (png/jpeg), issues. Blocking = rejected /
+  undecodable; SVG-vector is a warning.
+- **Pack** — `POST /projects/:id/export`: a zip of `manifest.json` (project,
+  canon version, exported_at, per-asset metadata + skipped list) + `assets/*`.
+  Frontend: an Export dialog from a collection shows the report, then downloads.
 - Then a **Godot package** (Unity later).
 
 ### Done — Phase 3 PR5 (lineage + canon propagation)
