@@ -114,3 +114,22 @@ async fn call(key: &str, model: &str, prompt: &str) -> Result<String, AppError> 
         .ok_or_else(|| AppError::Internal("LLM returned no content".into()))?;
     Ok(answer.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{build_prompt, synthesize};
+
+    #[test]
+    fn prompt_includes_question_and_all_notes() {
+        let p = build_prompt("why was this made?", &["note one".into(), "note two".into()]);
+        assert!(p.contains("why was this made?"));
+        assert!(p.contains("note one") && p.contains("note two"));
+    }
+
+    #[tokio::test]
+    async fn synthesize_with_no_notes_short_circuits() {
+        // No LLM call (and no spend) when there's nothing to ground on.
+        let a = synthesize("anything", &[]).await.unwrap();
+        assert!(!a.is_empty());
+    }
+}

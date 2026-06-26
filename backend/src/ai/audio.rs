@@ -99,3 +99,26 @@ fn wav_container(sample_rate: u32, channels: u16, pcm: &[u8]) -> Vec<u8> {
     out.extend_from_slice(pcm);
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{generate_audio, wav_container};
+
+    #[test]
+    fn wav_container_has_riff_wave_header_and_length() {
+        let pcm = vec![0u8; 100];
+        let w = wav_container(22_050, 1, &pcm);
+        assert_eq!(&w[0..4], b"RIFF");
+        assert_eq!(&w[8..12], b"WAVE");
+        assert_eq!(w.len(), 44 + pcm.len()); // 44-byte header + payload
+    }
+
+    #[tokio::test]
+    async fn mock_clip_is_a_valid_nonempty_wav() {
+        // AUDIO_MOCK defaults true, so this synthesizes locally (no network).
+        let clip = generate_audio("sword clang", 0).await.unwrap();
+        assert_eq!(clip.mime, "audio/wav");
+        assert_eq!(&clip.bytes[0..4], b"RIFF");
+        assert!(clip.bytes.len() > 44 && clip.duration_ms > 0);
+    }
+}

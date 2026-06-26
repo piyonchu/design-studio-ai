@@ -50,3 +50,18 @@ pub fn is_known(key: &str) -> bool {
 pub fn all() -> &'static [Vertical] {
     VERTICALS
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_lookup_and_fallback() {
+        assert_eq!(get("manhwa").key, "manhwa");
+        assert_eq!(get("illustration").key, "illustration");
+        assert_eq!(get("bogus").key, "game_2d"); // unknown → default
+        assert!(is_known("game_2d") && is_known("illustration"));
+        assert!(!is_known("nope"));
+        assert!(all().len() >= 3);
+    }
+}

@@ -74,6 +74,39 @@ fn diff_note(parent: Option<&Value>, next: &Value) -> Option<String> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::diff_note;
+    use serde_json::json;
+
+    #[test]
+    fn initial_canon_has_a_note() {
+        assert_eq!(diff_note(None, &json!({})).as_deref(), Some("Initial canon."));
+    }
+
+    #[test]
+    fn changed_field_names_old_and_new() {
+        let prev = json!({ "style": { "palette": "warm earthy" } });
+        let next = json!({ "style": { "palette": "high-contrast neon" } });
+        let note = diff_note(Some(&prev), &next).unwrap();
+        assert!(note.contains("palette"));
+        assert!(note.contains("warm earthy") && note.contains("high-contrast neon"));
+    }
+
+    #[test]
+    fn added_negative_is_counted() {
+        let prev = json!({ "style": {}, "negative": [] });
+        let next = json!({ "style": {}, "negative": ["no text"] });
+        assert!(diff_note(Some(&prev), &next).unwrap().contains("+1 negative"));
+    }
+
+    #[test]
+    fn no_change_is_none() {
+        let v = json!({ "style": { "palette": "warm" }, "negative": ["x"] });
+        assert!(diff_note(Some(&v), &v).is_none());
+    }
+}
+
 /// The current (highest-version) canon for a project; 404 if none defined yet.
 async fn latest(
     State(state): State<AppState>,

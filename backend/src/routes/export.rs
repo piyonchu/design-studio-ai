@@ -64,6 +64,28 @@ fn slug(s: &str) -> String {
     out.trim_end_matches('-').to_string()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{ext_for, slug};
+
+    #[test]
+    fn slug_lowercases_and_collapses_separators() {
+        assert_eq!(slug("Hero Idle Frame"), "hero-idle-frame");
+        assert_eq!(slug("  A/B  c! "), "a-b-c");
+        assert_eq!(slug("já_vu??"), "j-vu"); // non-ascii dropped
+        assert_eq!(slug(""), "");
+    }
+
+    #[test]
+    fn ext_for_maps_known_mimes() {
+        assert_eq!(ext_for("image/png"), "png");
+        assert_eq!(ext_for("image/jpeg"), "jpg");
+        assert_eq!(ext_for("image/svg+xml"), "svg");
+        assert_eq!(ext_for("image/webp"), "webp");
+        assert_eq!(ext_for("application/octet-stream"), "bin");
+    }
+}
+
 /// Decode + run deterministic checks for one asset, returning its verdict and
 /// raw bytes (so export can write the same bytes it checked). The filename is
 /// index-prefixed for stable uniqueness within the pack.

@@ -36,3 +36,17 @@ pub fn put(namespace: &str, key: &str, value: &str) {
         let _ = std::fs::write(d.join(format!("{key}.txt")), value);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::key;
+
+    #[test]
+    fn key_is_deterministic_and_distinct() {
+        assert_eq!(key(&["model", "prompt"]), key(&["model", "prompt"]));
+        assert_ne!(key(&["model", "prompt"]), key(&["model", "other"]));
+        // Boundary-aware: ["ab","c"] must not collide with ["a","bc"].
+        assert_ne!(key(&["ab", "c"]), key(&["a", "bc"]));
+        assert_eq!(key(&["x"]).len(), 16);
+    }
+}

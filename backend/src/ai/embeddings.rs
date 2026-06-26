@@ -166,6 +166,48 @@ pub async fn index_semantic(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{embed_text, to_pgvector, VISUAL_DIM};
+
+    fn cosine(a: &[f32], b: &[f32]) -> f32 {
+        a.iter().zip(b).map(|(x, y)| x * y).sum() // vectors are L2-normalized
+    }
+
+    #[test]
+    fn identical_text_is_self_similar() {
+        let a = embed_text("cute japanese hat", VISUAL_DIM).unwrap();
+        let b = embed_text("cute japanese hat", VISUAL_DIM).unwrap();
+        assert!((cosine(&a, &b) - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn overlap_beats_disjoint() {
+        let q = embed_text("japanese hat", VISUAL_DIM).unwrap();
+        let near = embed_text("a cute japanese straw hat", VISUAL_DIM).unwrap();
+        let far = embed_text("metal sword clang", VISUAL_DIM).unwrap();
+        assert!(cosine(&q, &near) > cosine(&q, &far));
+    }
+
+    #[test]
+    fn empty_or_tokenless_is_none() {
+        assert!(embed_text("", VISUAL_DIM).is_none());
+        assert!(embed_text("  ! ? ", VISUAL_DIM).is_none());
+    }
+
+    #[test]
+    fn vectors_are_normalized() {
+        let v = embed_text("hello world foo bar", VISUAL_DIM).unwrap();
+        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!((norm - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn pgvector_text_format() {
+        assert_eq!(to_pgvector(&[1.0, 2.5]), "[1.000000,2.500000]");
+    }
+}
+
 /// Fire-and-forget semantic index (logs on failure).
 pub async fn index_semantic_soft(
     pool: &PgPool,
