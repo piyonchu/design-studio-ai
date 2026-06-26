@@ -80,6 +80,9 @@ pub struct Canon {
     pub parent_id: Option<Uuid>,
     pub version: i32,
     pub data: Value,
+    /// Auto-generated "what changed vs the previous version" note (a deterministic
+    /// diff, not an LLM guess). Null on legacy rows.
+    pub change_note: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
