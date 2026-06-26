@@ -29,7 +29,7 @@ pub struct GeneratedImage {
 }
 
 fn asset_mock() -> bool {
-    std::env::var("ASSET_MOCK").map(|v| v == "true").unwrap_or(false)
+    std::env::var("ASSET_MOCK").map(|v| v.trim().eq_ignore_ascii_case("true")).unwrap_or(false)
 }
 
 fn api_key() -> Option<String> {

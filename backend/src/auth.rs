@@ -85,7 +85,7 @@ pub fn clear_cookie() -> Cookie<'static> {
 }
 
 fn cookie_secure() -> bool {
-    std::env::var("COOKIE_SECURE").map(|v| v == "true").unwrap_or(false)
+    std::env::var("COOKIE_SECURE").map(|v| v.trim().eq_ignore_ascii_case("true")).unwrap_or(false)
 }
 
 // ── Authenticated-user extractor ─────────────────────────────────────────────

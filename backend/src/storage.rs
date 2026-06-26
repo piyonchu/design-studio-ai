@@ -42,7 +42,7 @@ impl Storage {
         let endpoint = env::var("S3_ENDPOINT").ok().filter(|e| !e.trim().is_empty());
         // MinIO (and any custom endpoint) needs path-style addressing.
         let path_style = endpoint.is_some()
-            || env::var("S3_PATH_STYLE").map(|v| v == "true").unwrap_or(false);
+            || env::var("S3_PATH_STYLE").map(|v| v.trim().eq_ignore_ascii_case("true")).unwrap_or(false);
 
         let region = match &endpoint {
             Some(ep) => Region::Custom {
