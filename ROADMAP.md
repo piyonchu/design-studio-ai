@@ -22,7 +22,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 4 | Audio modality — provider boundary + mock WAV + generate/play | ✅ (mock; no hosted provider yet) |
 | 5 · PR1 | Export — generic zip + manifest + pre-export checks | ✅ |
 | 5 · PR2 | Export — role/tag-grouped pack (vertical-neutral) | ✅ |
-| — | Semantic context RAG — "why was this created" over briefs/comments/canon | ⏳ next (mock-able) |
+| 3.5 PR2 | Semantic context RAG — "Ask this project" over briefs/prompts/comments/canon | ✅ (mock; retrieval-only) |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ (deferred — rule of three) |
 | — | Nav shell (left rail + slide-overs, replace tabs) | ⏳ |
 
@@ -38,9 +38,15 @@ a real text/CLIP model swaps in behind the same signature (gated on spend).
 Verified: query ranks matches over non-matches; dup prompt flagged ~0.89; novel
 prompt → 0 false positives.
 
-Next RAG step: **semantic context** (`semantic_embeddings`) over briefs /
-prompts / comments / canon to answer "why was this created / what's it for" —
-also mock-able with the same embedder.
+### Done — Phase 3.5 PR2 (semantic context, mock)
+"Ask this project" retrieves the most relevant snippets (brief / asset prompt /
+comment / canon) for a question — `semantic_embeddings`, same mock embedder.
+`/context?q` + `/context/backfill`; box atop the Canon tab. Retrieval-only; an
+LLM synthesis layer (true generated answers) can sit on top later.
+
+Remaining RAG idea: **smart versioning** (autoname / "why did this change") —
+needs *text generation* (the Anthropic client was removed in the pivot), so
+it's a mock summarizer now or re-add a text client. A decision for the user.
 
 ## Next: Nav shell (left rail) — or pick the next vertical
 Export is generic and grouped; engine-specific packers (Godot/Unity) are
