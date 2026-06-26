@@ -63,7 +63,7 @@ async fn ranked(
     query_text: &str,
     limit: i64,
 ) -> Result<Vec<ScoredAsset>, AppError> {
-    let Some(vec) = embeddings::embed_text(query_text, embeddings::VISUAL_DIM) else {
+    let Some(vec) = embeddings::embed_text(query_text, embeddings::VISUAL_DIM).await else {
         return Ok(Vec::new());
     };
     let pg = embeddings::to_pgvector(&vec);

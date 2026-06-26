@@ -47,6 +47,13 @@ fn is_inline(s3_key: &str) -> bool {
     s3_key.starts_with("data:") || s3_key.starts_with("http://") || s3_key.starts_with("https://")
 }
 
+/// A raster MIME the image model accepts as an img2img reference (SVG/vector and
+/// unknown types are rejected by the provider, so we skip them).
+fn is_raster(mime: &str) -> bool {
+    let m = mime.to_ascii_lowercase();
+    m.contains("png") || m.contains("jpeg") || m.contains("jpg") || m.contains("webp")
+}
+
 /// Generate one or more images for a project and persist them as assets.
 async fn generate(
     State(state): State<AppState>,
@@ -87,11 +94,13 @@ async fn generate(
     .await?;
     let exemplar_ref = match &exemplar {
         Some((eid, key, mime)) => match asset_bytes(&state, key, mime.as_deref()).await {
-            Ok((bytes, m)) => {
+            // Only raster references are usable as img2img input; skip vector/
+            // unknown (e.g. mock SVG) and fall back to text-only generation.
+            Ok((bytes, m)) if is_raster(&m) => {
                 tracing::info!(exemplar = %eid, "conditioning generation on approved exemplar");
                 Some((*eid, bytes, m))
             }
-            Err(_) => None,
+            _ => None,
         },
         None => None,
     };

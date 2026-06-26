@@ -1,15 +1,22 @@
-//! Embedding boundary for RAG / smart search / dedup. Mock-first, exactly like
-//! the image + audio clients, so a real model swaps in without touching routes.
+//! Embedding boundary for RAG / smart search / dedup, behind `EMBED_MOCK`.
 //!
-//! `EMBED_MOCK=true` (default) uses a **feature-hashed bag-of-words** embedder:
-//! tokens hash into dims, L2-normalized. It's deterministic and genuinely
-//! useful — identical text → cosine 1.0 (dedup), shared tokens → positive
-//! similarity (keyword/overlap search) — so the whole pipeline is testable with
-//! no spend. A real text/CLIP model (true semantic "feel") is a localized swap.
+//! - `EMBED_MOCK=true` (default) → a **feature-hashed bag-of-words** embedder:
+//!   deterministic, free, lexical. Good enough to test the whole pipeline.
+//! - `EMBED_MOCK=false` + `OPENROUTER_API_KEY` → a **real text embedder**
+//!   (`openai/text-embedding-3-small` via OpenRouter `/embeddings`, with the
+//!   `dimensions` param matching our columns). True semantic similarity. Each
+//!   (model, dim, text) is cached on disk (`ai::cache`), so a given text is
+//!   embedded — and paid for — at most once. Visual embeddings use the asset's
+//!   caption (real pixel-CLIP is a future swap behind this same seam).
 
+use std::sync::OnceLock;
+use std::time::Duration;
+
+use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::ai::cache;
 use crate::error::AppError;
 use crate::models::Asset;
 
@@ -17,10 +24,32 @@ use crate::models::Asset;
 /// `semantic_embeddings` = 1024).
 pub const VISUAL_DIM: usize = 768;
 pub const SEMANTIC_DIM: usize = 1024;
-pub const MODEL: &str = "mock-bow-v1";
+
+const EMBED_URL: &str = "https://openrouter.ai/api/v1/embeddings";
+const DEFAULT_EMBED_MODEL: &str = "openai/text-embedding-3-small";
 
 fn embed_mock() -> bool {
     std::env::var("EMBED_MOCK").map(|v| v.trim().eq_ignore_ascii_case("true")).unwrap_or(true)
+}
+fn api_key() -> Option<String> {
+    std::env::var("OPENROUTER_API_KEY").ok().filter(|k| !k.trim().is_empty())
+}
+fn real_model() -> String {
+    std::env::var("EMBED_MODEL").ok().filter(|m| !m.trim().is_empty()).unwrap_or_else(|| DEFAULT_EMBED_MODEL.to_string())
+}
+fn client() -> &'static reqwest::Client {
+    static C: OnceLock<reqwest::Client> = OnceLock::new();
+    C.get_or_init(|| reqwest::Client::builder().timeout(Duration::from_secs(30)).build().expect("client"))
+}
+
+/// The model tag stored on each embedding row (so a future re-embed can tell
+/// mock rows from real ones).
+pub fn model_tag() -> String {
+    if embed_mock() {
+        "mock-bow-v1".to_string()
+    } else {
+        real_model()
+    }
 }
 
 fn fnv(s: &str) -> u64 {
@@ -32,15 +61,8 @@ fn fnv(s: &str) -> u64 {
     h
 }
 
-/// Embed text → an L2-normalized vector, or `None` if there are no tokens (an
-/// empty caption carries no signal, so we don't index it). Real providers will
-/// return their own vector here behind the same signature.
-pub fn embed_text(text: &str, dim: usize) -> Option<Vec<f32>> {
-    if !embed_mock() {
-        // No hosted embedding provider wired yet — callers treat None as
-        // "skip indexing" so the app still works; search just returns less.
-        return None;
-    }
+/// The deterministic, free feature-hashed embedder (mock + the unit-test core).
+pub fn embed_mock_vec(text: &str, dim: usize) -> Option<Vec<f32>> {
     let mut v = vec![0f32; dim];
     let mut any = false;
     for tok in text.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|t| t.len() > 1) {
@@ -60,6 +82,54 @@ pub fn embed_text(text: &str, dim: usize) -> Option<Vec<f32>> {
         }
     }
     Some(v)
+}
+
+/// Real text embedding via OpenRouter, cached by (model, dim, text). Returns
+/// None on any failure so indexing degrades gracefully (search just returns less).
+async fn embed_real(text: &str, dim: usize) -> Option<Vec<f32>> {
+    let key = api_key()?;
+    let model = real_model();
+    let ck = cache::key(&[&model, &dim.to_string(), text]);
+    if let Some(hit) = cache::get("embed", &ck) {
+        return parse_csv(&hit);
+    }
+    let body = json!({ "model": model, "input": text, "dimensions": dim });
+    let resp = client().post(EMBED_URL).bearer_auth(&key).json(&body).send().await.ok()?;
+    if !resp.status().is_success() {
+        tracing::warn!(status = %resp.status(), "embedding request failed");
+        return None;
+    }
+    let v: serde_json::Value = resp.json().await.ok()?;
+    let arr = v["data"][0]["embedding"].as_array()?;
+    let vec: Vec<f32> = arr.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect();
+    if vec.len() != dim {
+        tracing::warn!(got = vec.len(), want = dim, "embedding dim mismatch");
+        return None;
+    }
+    cache::put("embed", &ck, &vec.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+    Some(vec)
+}
+
+fn parse_csv(s: &str) -> Option<Vec<f32>> {
+    let v: Vec<f32> = s.split(',').filter_map(|p| p.parse().ok()).collect();
+    if v.is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
+
+/// Embed text → an L2-normalized (mock) or provider (real) vector, or `None`
+/// when there's nothing to embed / no provider. Async so the real path can do IO.
+pub async fn embed_text(text: &str, dim: usize) -> Option<Vec<f32>> {
+    if text.trim().is_empty() {
+        return None;
+    }
+    if embed_mock() {
+        embed_mock_vec(text, dim)
+    } else {
+        embed_real(text, dim).await
+    }
 }
 
 /// pgvector text form: `[a,b,c]`. Bound as text and cast `$n::vector` in SQL so
@@ -99,7 +169,7 @@ pub fn caption_from(a: &Asset) -> String {
 /// Index (or re-index) one asset's embedding. No-op when the caption is empty or
 /// no embedder is configured — never fails the caller's main operation.
 pub async fn index_asset(pool: &PgPool, asset_id: Uuid, caption: &str) -> Result<(), AppError> {
-    let Some(v) = embed_text(caption, VISUAL_DIM) else {
+    let Some(v) = embed_text(caption, VISUAL_DIM).await else {
         return Ok(());
     };
     let pg = to_pgvector(&v);
@@ -110,7 +180,7 @@ pub async fn index_asset(pool: &PgPool, asset_id: Uuid, caption: &str) -> Result
     sqlx::query("INSERT INTO visual_embeddings (asset_id, embedding, model) VALUES ($1, $2::vector, $3)")
         .bind(asset_id)
         .bind(pg)
-        .bind(MODEL)
+        .bind(model_tag())
         .execute(pool)
         .await?;
     Ok(())
@@ -140,7 +210,7 @@ pub async fn index_semantic(
     source_id: Option<Uuid>,
     content: &str,
 ) -> Result<(), AppError> {
-    let Some(v) = embed_text(content, SEMANTIC_DIM) else {
+    let Some(v) = embed_text(content, SEMANTIC_DIM).await else {
         return Ok(());
     };
     let pg = to_pgvector(&v);
@@ -160,7 +230,7 @@ pub async fn index_semantic(
     .bind(source_id)
     .bind(content)
     .bind(pg)
-    .bind(MODEL)
+    .bind(model_tag())
     .execute(pool)
     .await?;
     Ok(())
@@ -168,7 +238,7 @@ pub async fn index_semantic(
 
 #[cfg(test)]
 mod tests {
-    use super::{embed_text, to_pgvector, VISUAL_DIM};
+    use super::{embed_mock_vec as embed_text, to_pgvector, VISUAL_DIM};
 
     fn cosine(a: &[f32], b: &[f32]) -> f32 {
         a.iter().zip(b).map(|(x, y)| x * y).sum() // vectors are L2-normalized

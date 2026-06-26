@@ -26,7 +26,7 @@ async fn ask(
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<ContextAnswer>, AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
-    let Some(vec) = embeddings::embed_text(&q.q, embeddings::SEMANTIC_DIM) else {
+    let Some(vec) = embeddings::embed_text(&q.q, embeddings::SEMANTIC_DIM).await else {
         return Ok(Json(ContextAnswer { answer: String::new(), sources: Vec::new() }));
     };
     let pg = embeddings::to_pgvector(&vec);
