@@ -2,7 +2,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, patch, post};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
 use serde::Deserialize;
@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::ai;
 use crate::auth::{self, AuthUser};
 use crate::error::AppError;
-use crate::models::{Asset, DeriveAssets, GenerateAssets, UpdateAssetStatus, WorkspaceRole};
+use crate::models::{Asset, AssetDetail, DeriveAssets, GenerateAssets, UpdateAsset, WorkspaceRole};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -20,7 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/projects/:project_id/assets", get(list).post(generate))
         .route("/projects/:project_id/assets/upload", post(upload))
         .route("/projects/:project_id/assets/:base_id/derive", post(derive))
-        .route("/assets/:id", patch(set_status))
+        .route("/assets/:id", get(get_one).patch(update_asset).delete(delete_one))
         .route("/assets/:id/file", get(file))
 }
 
@@ -247,13 +247,58 @@ async fn derive(
     Ok((StatusCode::CREATED, Json(out)))
 }
 
-/// Approve / reject / flag a candidate — the consistency-review gate. Only
-/// approved assets should influence future derivations.
-async fn set_status(
+/// One asset with its lineage — the base it was derived from + its derivatives.
+async fn get_one(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<Uuid>,
-    Json(body): Json<UpdateAssetStatus>,
+) -> Result<Json<AssetDetail>, AppError> {
+    let asset = sqlx::query_as::<_, Asset>(&format!("SELECT {ASSET_COLS} FROM assets WHERE id = $1"))
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    auth::require_project_access(&state.pool, asset.project_id, user.id, WorkspaceRole::Viewer).await?;
+
+    // The base this was derived from (if any).
+    let base_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT to_asset FROM asset_links WHERE from_asset = $1 AND relation = 'derived_from' LIMIT 1",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let base = match base_id {
+        Some(bid) => sqlx::query_as::<_, Asset>(&format!("SELECT {ASSET_COLS} FROM assets WHERE id = $1"))
+            .bind(bid)
+            .fetch_optional(&state.pool)
+            .await?
+            .map(with_url),
+        None => None,
+    };
+
+    // Everything derived from this asset.
+    let derivatives = sqlx::query_as::<_, Asset>(&format!(
+        "SELECT {ASSET_COLS} FROM assets
+         WHERE id IN (SELECT from_asset FROM asset_links WHERE to_asset = $1 AND relation = 'derived_from')
+         ORDER BY created_at DESC"
+    ))
+    .bind(id)
+    .fetch_all(&state.pool)
+    .await?
+    .into_iter()
+    .map(with_url)
+    .collect();
+
+    Ok(Json(AssetDetail { asset: with_url(asset), base, derivatives }))
+}
+
+/// Update editable metadata (status / role / tags). Only provided fields change.
+/// Reused by the review buttons (status only) and the inspector (role/tags).
+async fn update_asset(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateAsset>,
 ) -> Result<Json<Asset>, AppError> {
     let project_id: Option<Uuid> =
         sqlx::query_scalar("SELECT project_id FROM assets WHERE id = $1")
@@ -264,13 +309,46 @@ async fn set_status(
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
 
     let asset = sqlx::query_as::<_, Asset>(&format!(
-        "UPDATE assets SET status = $1 WHERE id = $2 RETURNING {ASSET_COLS}"
+        "UPDATE assets SET
+           status = COALESCE($1::asset_status, status),
+           role   = COALESCE($2::text, role),
+           tags   = COALESCE($3::text[], tags)
+         WHERE id = $4 RETURNING {ASSET_COLS}"
     ))
     .bind(body.status)
+    .bind(body.role)
+    .bind(body.tags)
     .bind(id)
     .fetch_one(&state.pool)
     .await?;
     Ok(Json(with_url(asset)))
+}
+
+/// Delete an asset. `asset_links` rows CASCADE; the stored object is cleaned up
+/// best-effort (a leftover object is harmless, a failed delete shouldn't 500).
+async fn delete_one(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let row: Option<(Uuid, String)> =
+        sqlx::query_as("SELECT project_id, s3_key FROM assets WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let (project_id, s3_key) = row.ok_or(AppError::NotFound)?;
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
+
+    sqlx::query("DELETE FROM assets WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    if !is_inline(&s3_key) {
+        if let Err(e) = state.storage.delete(&s3_key).await {
+            tracing::warn!(error = %e, key = %s3_key, "asset deleted but object cleanup failed");
+        }
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Load an asset's raw bytes to use as a derivation reference: object storage by

@@ -170,7 +170,22 @@ pub struct DeriveAssets {
     pub count: Option<u32>,
 }
 
+/// Partial update — only the provided fields change (COALESCE on the backend).
 #[derive(Debug, Deserialize)]
-pub struct UpdateAssetStatus {
-    pub status: AssetStatus,
+pub struct UpdateAsset {
+    #[serde(default)]
+    pub status: Option<AssetStatus>,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+}
+
+/// An asset plus its lineage: the base it was derived from, and its derivatives.
+#[derive(Debug, Serialize)]
+pub struct AssetDetail {
+    #[serde(flatten)]
+    pub asset: Asset,
+    pub base: Option<Asset>,
+    pub derivatives: Vec<Asset>,
 }

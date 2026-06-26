@@ -138,4 +138,18 @@ impl Storage {
             Storage::Inline => Err(AppError::Internal("get() on inline storage".into())),
         }
     }
+
+    /// Delete an object by key. No-op for inline storage (nothing stored).
+    pub async fn delete(&self, key: &str) -> Result<(), AppError> {
+        match self {
+            Storage::S3 { bucket } => {
+                bucket
+                    .delete_object(key)
+                    .await
+                    .map_err(|e| AppError::ServiceUnavailable(format!("storage delete failed: {e}")))?;
+                Ok(())
+            }
+            Storage::Inline => Ok(()),
+        }
+    }
 }

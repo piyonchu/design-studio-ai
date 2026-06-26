@@ -6,9 +6,11 @@ import {
   UploadSimpleIcon,
   CheckIcon,
   XIcon,
+  MagnifyingGlassIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
+import { AssetInspector } from './AssetInspector'
 
 // Spike-proven generative derivations (recolor stays out — it drifts identity
 // generatively; it belongs on the deterministic path).
@@ -29,6 +31,7 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
   const [baseId, setBaseId] = useState<string | null>(null)
   const [instruction, setInstruction] = useState('')
   const [busy, setBusy] = useState(false)
+  const [inspectId, setInspectId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -210,10 +213,20 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                   {a.source_kind}
                 </span>
                 {a.status !== 'candidate' && (
-                  <span className="absolute right-1.5 top-1.5 rounded-[6px] bg-teal/80 px-1.5 py-0.5 text-[10px] font-medium text-bg">
+                  <span className="absolute right-1.5 top-1.5 rounded-[6px] bg-teal/80 px-1.5 py-0.5 text-[10px] font-medium text-bg transition group-hover:opacity-0">
                     {a.status}
                   </span>
                 )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setInspectId(a.id)
+                  }}
+                  aria-label="Inspect"
+                  className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-[6px] bg-black/55 text-white/90 opacity-0 backdrop-blur transition group-hover:opacity-100"
+                >
+                  <MagnifyingGlassIcon size={13} />
+                </button>
                 {a.status === 'candidate' && (
                   <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-black/45 p-1.5 opacity-0 backdrop-blur transition group-hover:opacity-100">
                     <button
@@ -248,6 +261,19 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
           </div>
         )}
       </div>
+
+      <AssetInspector
+        assetId={inspectId}
+        onClose={() => setInspectId(null)}
+        onNavigate={setInspectId}
+        onChanged={(updated) =>
+          setAssets((a) => a.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))
+        }
+        onDeleted={(id) => {
+          setAssets((a) => a.filter((x) => x.id !== id))
+          if (baseId === id) setBaseId(null)
+        }}
+      />
     </div>
   )
 }
