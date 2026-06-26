@@ -62,6 +62,6 @@ Open http://localhost:5173 → sign up → open a project.
 `ATLAS_PLAN.md`, `PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md` are intentionally untracked scratch/plan notes — ignore for handoff; the source of truth is `PLAN.md` + `ROADMAP.md`.
 
 ## Next up
-Open candidates (see [ROADMAP.md](ROADMAP.md)): **nav shell** (left rail, replace the 6 tabs — matches the design mockups); **asset autoname** (deterministic display names from role+prompt); **LLM answer-synthesis** on top of the "Ask this project" retrieval; **2nd vertical** (manhwa/illustration/marketing); **engine adapters** (deferred until a 2nd vertical, will consume the export `groups[]`). Swapping the mock embedder for a real text/CLIP model (true semantic "feel") needs a shared-key spend go-ahead.
+Open candidates (see [ROADMAP.md](ROADMAP.md)): **asset autoname** (deterministic display names from role+prompt); **2nd vertical** (manhwa/illustration/marketing — a "which one" decision); **engine adapters** (deferred until a 2nd vertical, will consume the export `groups[]`); **LLM answer-synthesis** on top of the "Ask this project" retrieval, and a **real text/CLIP embedder** for true semantic "feel" — both need a shared-key spend go-ahead.
 
 > Migrations note: the embedding stores (`semantic_embeddings` 1024-d, `visual_embeddings` 768-d) ship from `0001` with placeholder dims; the mock embedder matches them. Reconcile dims when a real model is chosen.
