@@ -1,4 +1,5 @@
 mod assets;
+mod audio;
 mod auth;
 mod canon;
 mod collections;
@@ -21,6 +22,7 @@ pub fn router() -> Router<AppState> {
         .merge(projects::router())
         .merge(canon::router())
         .merge(assets::router())
+        .merge(audio::router())
         .merge(collections::router())
         .merge(comments::router())
         .merge(lineage::router())
