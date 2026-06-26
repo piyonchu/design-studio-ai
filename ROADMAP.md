@@ -33,6 +33,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 6 | 2nd vertical — **manhwa/webtoon** (config-only; proves core generalizes) | ✅ |
 | — | **Vertical-adapter framework** — registry per side (BE prompt rules + validation; FE picker single-source); 3rd vertical **illustration** | ✅ |
 | — | Test suite (18 unit tests over core logic) + GitHub Actions CI | ✅ |
+| — | Activity feed — merged asset/comment/canon timeline (Activity tab) | ✅ |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ |
 | — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
 
