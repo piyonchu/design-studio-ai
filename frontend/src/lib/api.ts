@@ -314,6 +314,27 @@ export const askContext = (projectId: string, q: string) =>
 export const backfillContext = (projectId: string) =>
   request<{ indexed: number }>(`/projects/${projectId}/context/backfill`, { method: 'POST' })
 
+// ── Generation recipes (reusable derivation templates) ──────────────────────
+export interface Recipe {
+  id: string
+  project_id: string
+  name: string
+  instruction: string
+  created_at: string
+}
+
+export const listRecipes = (projectId: string) =>
+  request<Recipe[]>(`/projects/${projectId}/recipes`)
+
+export const createRecipe = (projectId: string, name: string, instruction: string) =>
+  request<Recipe>(`/projects/${projectId}/recipes`, {
+    method: 'POST',
+    body: JSON.stringify({ name, instruction }),
+  })
+
+export const deleteRecipe = (id: string) =>
+  request<void>(`/recipes/${id}`, { method: 'DELETE' })
+
 // ── Comments (collaboration) ─────────────────────────────────────────────────
 export interface AssetComment {
   id: string

@@ -14,6 +14,7 @@ import {
   MusicNotesIcon,
   WarningIcon,
   StarIcon,
+  BookmarkSimpleIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
@@ -75,10 +76,34 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
   const [batchCol, setBatchCol] = useState('')
   const [exportIds, setExportIds] = useState<string[] | null>(null)
 
+  const [recipes, setRecipes] = useState<api.Recipe[]>([])
+
   useEffect(() => {
     api.listAssets(projectId).then(setAssets).catch(() => {})
     api.listCollections(projectId).then(setCollections).catch(() => {})
+    api.listRecipes(projectId).then(setRecipes).catch(() => {})
   }, [projectId])
+
+  async function saveRecipe() {
+    const ins = instruction.trim()
+    if (!ins || busy) return
+    const name = ins.split(/\s+/).slice(0, 4).join(' ').slice(0, 40)
+    try {
+      const r = await api.createRecipe(projectId, name, ins)
+      setRecipes((rs) => [r, ...rs])
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Save recipe failed.')
+    }
+  }
+
+  async function removeRecipe(id: string) {
+    try {
+      await api.deleteRecipe(id)
+      setRecipes((rs) => rs.filter((r) => r.id !== id))
+    } catch {
+      /* ignore */
+    }
+  }
 
   // Debounced smart search — server-side semantic/keyword ranking. Empty query
   // clears hits and falls back to the full (client-filtered) library.
@@ -512,6 +537,28 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
                   </button>
                 ))}
               </div>
+              {recipes.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim">Recipes</span>
+                  {recipes.map((r) => (
+                    <span
+                      key={r.id}
+                      className="group inline-flex items-center gap-1 rounded-[8px] border border-teal/25 bg-teal/8 py-1 pl-2.5 pr-1 text-xs text-teal-bright"
+                    >
+                      <button onClick={() => setInstruction(r.instruction)} title={r.instruction}>
+                        {r.name}
+                      </button>
+                      <button
+                        onClick={() => removeRecipe(r.id)}
+                        aria-label="Delete recipe"
+                        className="text-text-dim opacity-0 transition hover:text-rose-300 group-hover:opacity-100"
+                      >
+                        <XIcon size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="flex items-center gap-2 rounded-[12px] bg-surface-2/60 p-2">
                 <input
                   value={instruction}
@@ -519,6 +566,15 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
                   placeholder="Derivation instruction…"
                   className="flex-1 bg-transparent px-2 text-sm text-text outline-none placeholder:text-text-dim"
                 />
+                <button
+                  onClick={saveRecipe}
+                  disabled={!instruction.trim()}
+                  title="Save this instruction as a reusable recipe"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] border border-white/10 px-2.5 py-2 text-xs text-text-dim transition hover:text-text disabled:opacity-40"
+                >
+                  <BookmarkSimpleIcon size={14} />
+                  Save
+                </button>
                 <button
                   onClick={derive}
                   disabled={busy || !instruction.trim()}
