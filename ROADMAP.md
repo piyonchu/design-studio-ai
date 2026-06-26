@@ -20,6 +20,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 3 · PR5 | Lineage graph + canon-change propagation | ✅ |
 | 3.5 | Visual intelligence (embeddings/dedup/similar) — **spike-gated** | ⏳ (needs spend go-ahead) |
 | 4 | (per PLAN) deeper RAG / asset intelligence | ⏳ |
+| 4 | Audio modality — provider boundary + mock WAV + generate/play | ✅ (mock; no hosted provider yet) |
 | 5 · PR1 | Export — generic zip + manifest + pre-export checks | ✅ |
 | 5 · PR2 | Export — role/tag-grouped pack (vertical-neutral) | ✅ |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ (deferred — rule of three) |
@@ -30,6 +31,13 @@ Export is generic and grouped; engine-specific packers (Godot/Unity) are
 **deferred** — they're a per-vertical adapter, and per PLAN we don't build the
 adapter layer until 2–3 verticals exist (rule of three). The grouped manifest
 (`groups[]` keyed by role/tag) is the seam an adapter will consume.
+
+### Done — Phase 4 (audio modality, mock)
+- `ai/audio.rs` mirrors the image boundary: `AUDIO_MOCK=true` synthesizes a
+  deterministic WAV; real mode 503 until a hosted provider is wired.
+- `POST /projects/:id/audio` stores `kind='audio'` assets; the board has an
+  image/audio toggle and plays clips inline. Second modality from the brief now
+  in the product. (Waveform/duration display + audio-specific checks: later.)
 
 Good next moves (no spend, no new vertical lock-in):
 - **Nav shell** — replace the growing tab bar (Canon/Assets/Review/Lineage/
