@@ -4,10 +4,11 @@ import { ArrowLeftIcon } from '@phosphor-icons/react'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
 import { AssetLibrary } from './assets/AssetLibrary'
+import { ReviewQueue } from './assets/ReviewQueue'
 import { CanonView } from './canon/CanonView'
 import { CollectionsView } from './collections/CollectionsView'
 
-type Tab = 'canon' | 'assets' | 'collections'
+type Tab = 'canon' | 'assets' | 'review' | 'collections'
 
 /**
  * Project view — the asset studio for one project. Currently the asset library;
@@ -53,7 +54,7 @@ export function ProjectWorkspace() {
         <p className="shrink-0 text-sm font-semibold text-text">{project?.name ?? 'Project'}</p>
 
         <nav className="ml-2 flex items-center gap-1 rounded-[10px] bg-surface-2/50 p-1">
-          {(['canon', 'assets', 'collections'] as Tab[]).map((t) => (
+          {(['canon', 'assets', 'review', 'collections'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -77,6 +78,8 @@ export function ProjectWorkspace() {
         {projectId &&
           (tab === 'canon' ? (
             <CanonView projectId={projectId} />
+          ) : tab === 'review' ? (
+            <ReviewQueue projectId={projectId} />
           ) : tab === 'collections' ? (
             <CollectionsView projectId={projectId} />
           ) : (

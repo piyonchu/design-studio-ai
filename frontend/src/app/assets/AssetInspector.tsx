@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
+import { CommentThread } from './CommentThread'
 
 /**
  * Asset inspector — a slide-over for one asset: preview, editable role/tags,
@@ -244,6 +245,10 @@ export function AssetInspector({
             {!detail.base && detail.derivatives.length === 0 && (
               <p className="mt-3 text-xs text-text-dim">No lineage yet — derive from this asset to grow it.</p>
             )}
+
+            <div className="mt-6 border-t border-white/8 pt-4">
+              <CommentThread assetId={detail.id} />
+            </div>
 
             <div className="mt-6 border-t border-white/8 pt-3">
               {confirming ? (

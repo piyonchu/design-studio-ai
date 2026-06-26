@@ -233,3 +233,25 @@ export const removeFromCollection = (id: string, assetId: string) =>
 
 export const deleteCollection = (id: string) =>
   request<void>(`/collections/${id}`, { method: 'DELETE' })
+
+// ── Comments (collaboration) ─────────────────────────────────────────────────
+export interface AssetComment {
+  id: string
+  asset_id: string
+  author_id: string | null
+  author_email: string | null
+  body: string
+  created_at: string
+}
+
+export const listComments = (assetId: string) =>
+  request<AssetComment[]>(`/assets/${assetId}/comments`)
+
+export const addComment = (assetId: string, body: string) =>
+  request<AssetComment>(`/assets/${assetId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  })
+
+export const deleteComment = (id: string) =>
+  request<void>(`/comments/${id}`, { method: 'DELETE' })
