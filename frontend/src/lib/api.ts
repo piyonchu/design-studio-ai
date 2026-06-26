@@ -421,13 +421,21 @@ export const checkExport = (projectId: string, assetIds: string[]) =>
     body: JSON.stringify({ asset_ids: assetIds }),
   })
 
-/** Build the pack and trigger a browser download of the zip. */
-export async function downloadExport(projectId: string, assetIds: string[]): Promise<void> {
+/**
+ * Build the pack and trigger a browser download of the zip. `target` selects an
+ * engine pack (e.g. `'godot'`) when the project's vertical supports it; omit it
+ * (or pass `'generic'`) for the vertical-neutral pack.
+ */
+export async function downloadExport(
+  projectId: string,
+  assetIds: string[],
+  target?: string,
+): Promise<void> {
   const res = await fetch(`${BASE}/projects/${projectId}/export`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ asset_ids: assetIds }),
+    body: JSON.stringify({ asset_ids: assetIds, target }),
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)

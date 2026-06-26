@@ -112,7 +112,7 @@ export function ProjectWorkspace() {
             ) : tab === 'lineage' ? (
               <LineageView projectId={projectId} />
             ) : tab === 'collections' ? (
-              <CollectionsView projectId={projectId} />
+              <CollectionsView projectId={projectId} vertical={project?.vertical} />
             ) : tab === 'activity' ? (
               <ActivityView projectId={projectId} />
             ) : (

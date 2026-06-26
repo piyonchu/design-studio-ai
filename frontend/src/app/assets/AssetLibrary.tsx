@@ -825,6 +825,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
           projectId={projectId}
           assetIds={exportIds}
           title={`${exportIds.length} selected`}
+          vertical={vertical}
           onClose={() => setExportIds(null)}
         />
       )}
