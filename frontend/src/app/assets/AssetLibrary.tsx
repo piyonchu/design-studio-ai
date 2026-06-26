@@ -10,10 +10,12 @@ import {
   CheckSquareIcon,
   FlagIcon,
   StackPlusIcon,
+  PackageIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { AssetInspector } from './AssetInspector'
+import { ExportDialog } from '../export/ExportDialog'
 
 // Spike-proven generative derivations (recolor stays out — it drifts identity
 // generatively; it belongs on the deterministic path).
@@ -70,6 +72,7 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchCol, setBatchCol] = useState('')
+  const [exportIds, setExportIds] = useState<string[] | null>(null)
 
   useEffect(() => {
     api.listAssets(projectId).then(setAssets).catch(() => {})
@@ -445,6 +448,14 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                 </button>
               </div>
             )}
+            <button
+              onClick={() => selected.size && setExportIds([...selected])}
+              disabled={!selected.size || busy}
+              className="inline-flex items-center gap-1.5 rounded-[8px] border border-white/10 px-3 py-1.5 text-sm text-text-dim transition hover:text-text disabled:opacity-40"
+            >
+              <PackageIcon size={14} />
+              Export
+            </button>
             {selected.size > 0 && (
               <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-text-dim hover:text-text">
                 Clear selection
@@ -626,6 +637,15 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
           if (baseId === id) setBaseId(null)
         }}
       />
+
+      {exportIds && (
+        <ExportDialog
+          projectId={projectId}
+          assetIds={exportIds}
+          title={`${exportIds.length} selected`}
+          onClose={() => setExportIds(null)}
+        />
+      )}
     </div>
   )
 }
