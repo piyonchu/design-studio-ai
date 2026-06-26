@@ -393,6 +393,17 @@ export const reconcileAssets = (projectId: string, assetIds: string[]) =>
     body: JSON.stringify({ asset_ids: assetIds }),
   })
 
+// ── Usage (shared OpenRouter key budget) ─────────────────────────────────────
+export interface Usage {
+  remaining: number
+  usage: number
+  limit: number | null
+  /** "openrouter" (live), "mock" (no key), or "stale" (last good value). */
+  source: string
+}
+/** The shared dev key's remaining OpenRouter credit. */
+export const getUsage = () => request<Usage>('/usage')
+
 // ── Export ───────────────────────────────────────────────────────────────────
 export interface AssetCheck {
   id: string

@@ -11,6 +11,7 @@ mod lineage;
 mod projects;
 mod recipes;
 mod search;
+mod usage;
 mod workspaces;
 
 use axum::Router;
@@ -35,4 +36,5 @@ pub fn router() -> Router<AppState> {
         .merge(context::router())
         .merge(recipes::router())
         .merge(activity::router())
+        .merge(usage::router())
 }

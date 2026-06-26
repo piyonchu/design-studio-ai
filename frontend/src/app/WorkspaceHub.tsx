@@ -4,6 +4,7 @@ import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
 import { AppShell } from './AppShell'
 import { ProjectCard } from './ProjectCard'
+import { CreditChip } from './CreditChip'
 import { VERTICALS } from './verticals'
 
 export function WorkspaceHub() {
@@ -70,12 +71,15 @@ export function WorkspaceHub() {
               {projects.length} {projects.length === 1 ? 'project' : 'projects'}
             </p>
           </div>
-          <button
-            onClick={() => setCreating((v) => !v)}
-            className="inline-flex items-center gap-2 rounded-[10px] bg-teal px-4 py-2.5 text-sm font-semibold text-bg transition active:translate-y-px"
-          >
-            <PlusIcon size={16} weight="bold" /> New project
-          </button>
+          <div className="flex items-center gap-3">
+            <CreditChip />
+            <button
+              onClick={() => setCreating((v) => !v)}
+              className="inline-flex items-center gap-2 rounded-[10px] bg-teal px-4 py-2.5 text-sm font-semibold text-bg transition active:translate-y-px"
+            >
+              <PlusIcon size={16} weight="bold" /> New project
+            </button>
+          </div>
         </div>
 
         {creating && (
