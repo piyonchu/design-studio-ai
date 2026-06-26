@@ -28,6 +28,9 @@ export function AssetInspector({
   const [saved, setSaved] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [collections, setCollections] = useState<api.CollectionSummary[]>([])
+  const [selectedCol, setSelectedCol] = useState('')
+  const [added, setAdded] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -37,6 +40,8 @@ export function AssetInspector({
     setError(null)
     setSaved(false)
     setConfirming(false)
+    setSelectedCol('')
+    setAdded(null)
     api
       .getAsset(assetId)
       .then((d) => {
@@ -44,6 +49,7 @@ export function AssetInspector({
         setDetail(d)
         setRole(d.role ?? '')
         setTags(d.tags.join(', '))
+        api.listCollections(d.project_id).then((cs) => alive && setCollections(cs)).catch(() => {})
       })
       .catch((e) => alive && setError(e instanceof ApiError ? e.message : 'Failed to load.'))
     return () => {
@@ -70,6 +76,16 @@ export function AssetInspector({
       setError(e instanceof ApiError ? e.message : 'Save failed.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function addTo() {
+    if (!detail || !selectedCol) return
+    try {
+      await api.addToCollection(selectedCol, [detail.id])
+      setAdded(collections.find((c) => c.id === selectedCol)?.name ?? 'collection')
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Add failed.')
     }
   }
 
@@ -158,6 +174,36 @@ export function AssetInspector({
               {saved && <span className="text-xs text-teal-bright">Saved</span>}
               {error && <span className="text-xs text-rose-300">{error}</span>}
             </div>
+
+            {collections.length > 0 ? (
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <select
+                  value={selectedCol}
+                  onChange={(e) => {
+                    setSelectedCol(e.target.value)
+                    setAdded(null)
+                  }}
+                  className="rounded-[10px] bg-surface/60 px-2.5 py-2 text-sm text-text outline-none focus:ring-1 focus:ring-teal/40"
+                >
+                  <option value="">Add to collection…</option>
+                  {collections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={addTo}
+                  disabled={!selectedCol}
+                  className="rounded-[8px] border border-white/10 px-3 py-1.5 text-sm text-text-dim transition hover:text-text disabled:opacity-40"
+                >
+                  Add
+                </button>
+                {added && <span className="text-xs text-teal-bright">Added to {added}</span>}
+              </div>
+            ) : (
+              <p className="mb-5 text-xs text-text-dim">No collections yet — create one in the Collections tab.</p>
+            )}
 
             <div className="flex items-center gap-1.5 border-t border-white/8 pt-3 text-xs text-text-dim">
               <TreeStructureIcon size={14} />
