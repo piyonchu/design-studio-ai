@@ -29,3 +29,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # of the TLS stack; path-style addressing is enabled at runtime for MinIO.
 rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
 base64 = "0.22"
+# Export: in-memory zip packs (deflate) + raster decode for pre-export checks
+# (dimensions / alpha). image is trimmed to the formats we actually emit.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

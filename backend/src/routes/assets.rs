@@ -25,7 +25,7 @@ pub fn router() -> Router<AppState> {
 }
 
 pub(crate) const ASSET_COLS: &str =
-    "id, project_id, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, created_at";
+    "id, project_id, name, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, exemplar, created_at";
 
 /// 10 MB cap on a single uploaded asset.
 const MAX_UPLOAD: usize = 10 * 1024 * 1024;
@@ -47,6 +47,13 @@ fn is_inline(s3_key: &str) -> bool {
     s3_key.starts_with("data:") || s3_key.starts_with("http://") || s3_key.starts_with("https://")
 }
 
+/// A raster MIME the image model accepts as an img2img reference (SVG/vector and
+/// unknown types are rejected by the provider, so we skip them).
+fn is_raster(mime: &str) -> bool {
+    let m = mime.to_ascii_lowercase();
+    m.contains("png") || m.contains("jpeg") || m.contains("jpg") || m.contains("webp")
+}
+
 /// Generate one or more images for a project and persist them as assets.
 async fn generate(
     State(state): State<AppState>,
@@ -66,14 +73,48 @@ async fn generate(
     .bind(project_id)
     .fetch_optional(&state.pool)
     .await?;
-    let (canon_id, prompt) = match &canon {
-        Some((id, data)) => (Some(*id), compile_prompt(&body.prompt, data)),
-        None => (None, body.prompt.clone()),
+    let vertical: String = sqlx::query_scalar("SELECT vertical FROM projects WHERE id = $1")
+        .bind(project_id)
+        .fetch_one(&state.pool)
+        .await?;
+    let canon_id = canon.as_ref().map(|(id, _)| *id);
+    let prompt = compile_prompt(&body.prompt, canon.as_ref().map(|(_, d)| d), &vertical);
+
+    // The moat loop: if the project has an approved style exemplar, condition
+    // generation on it (reference img2img) so new assets inherit the approved
+    // art direction. Falls back to text-only when there's none (or it can't be
+    // referenced, e.g. an inline/remote-URL asset).
+    let exemplar: Option<(Uuid, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, s3_key, mime_type FROM assets
+         WHERE project_id = $1 AND exemplar AND status = 'approved'
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(project_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let exemplar_ref = match &exemplar {
+        Some((eid, key, mime)) => match asset_bytes(&state, key, mime.as_deref()).await {
+            // Only raster references are usable as img2img input; skip vector/
+            // unknown (e.g. mock SVG) and fall back to text-only generation.
+            Ok((bytes, m)) if is_raster(&m) => {
+                tracing::info!(exemplar = %eid, "conditioning generation on approved exemplar");
+                Some((*eid, bytes, m))
+            }
+            _ => None,
+        },
+        None => None,
+    };
+    let exemplar_meta = match &exemplar_ref {
+        Some((eid, _, _)) => serde_json::json!({ "exemplar_id": eid }),
+        None => serde_json::json!({}),
     };
 
     let mut assets = Vec::with_capacity(count as usize);
     for n in 0..count as usize {
-        let img = ai::images::generate_image(&prompt, n).await?;
+        let img = match &exemplar_ref {
+            Some((_, bytes, mime)) => ai::images::derive_image(bytes, mime, &prompt, n).await?,
+            None => ai::images::generate_image(&prompt, n).await?,
+        };
 
         // Object storage when configured; otherwise store the image inline as a
         // data URL so the app still works with no object store.
@@ -87,16 +128,18 @@ async fn generate(
         };
 
         let asset = sqlx::query_as::<_, Asset>(&format!(
-            "INSERT INTO assets (project_id, kind, s3_key, mime_type, prompt, source_kind, canon_version_id)
-             VALUES ($1, 'image', $2, $3, $4, 'seeded', $5) RETURNING {ASSET_COLS}"
+            "INSERT INTO assets (project_id, kind, s3_key, mime_type, prompt, source_kind, canon_version_id, metadata)
+             VALUES ($1, 'image', $2, $3, $4, 'seeded', $5, $6) RETURNING {ASSET_COLS}"
         ))
         .bind(project_id)
         .bind(&s3_key)
         .bind(&img.mime)
         .bind(&body.prompt)
         .bind(canon_id)
+        .bind(&exemplar_meta)
         .fetch_one(&state.pool)
         .await?;
+        ai::embeddings::index_asset_soft(&state.pool, &asset).await;
         assets.push(with_url(asset));
     }
     Ok((StatusCode::CREATED, Json(assets)))
@@ -153,6 +196,7 @@ async fn upload(
     .bind(&params.role)
     .fetch_one(&state.pool)
     .await?;
+    ai::embeddings::index_asset_soft(&state.pool, &asset).await;
     Ok((StatusCode::CREATED, Json(with_url(asset))))
 }
 
@@ -205,10 +249,12 @@ async fn derive(
     .bind(project_id)
     .fetch_optional(&state.pool)
     .await?;
-    let (canon_id, prompt) = match canon {
-        Some((id, data)) => (Some(id), compile_prompt(instruction, &data)),
-        None => (None, instruction.to_string()),
-    };
+    let vertical: String = sqlx::query_scalar("SELECT vertical FROM projects WHERE id = $1")
+        .bind(project_id)
+        .fetch_one(&state.pool)
+        .await?;
+    let canon_id = canon.as_ref().map(|(id, _)| *id);
+    let prompt = compile_prompt(instruction, canon.as_ref().map(|(_, d)| d), &vertical);
 
     let mut out = Vec::with_capacity(count as usize);
     for n in 0..count as usize {
@@ -242,6 +288,7 @@ async fn derive(
         .bind(base_id)
         .execute(&state.pool)
         .await?;
+        ai::embeddings::index_asset_soft(&state.pool, &asset).await;
         out.push(with_url(asset));
     }
     Ok((StatusCode::CREATED, Json(out)))
@@ -310,15 +357,19 @@ async fn update_asset(
 
     let asset = sqlx::query_as::<_, Asset>(&format!(
         "UPDATE assets SET
-           status = COALESCE($1::asset_status, status),
-           role   = COALESCE($2::text, role),
-           tags   = COALESCE($3::text[], tags)
+           status   = COALESCE($1::asset_status, status),
+           role     = COALESCE($2::text, role),
+           tags     = COALESCE($3::text[], tags),
+           name     = COALESCE($5::text, name),
+           exemplar = COALESCE($6::boolean, exemplar)
          WHERE id = $4 RETURNING {ASSET_COLS}"
     ))
     .bind(body.status)
     .bind(body.role)
     .bind(body.tags)
     .bind(id)
+    .bind(body.name)
+    .bind(body.exemplar)
     .fetch_one(&state.pool)
     .await?;
     Ok(Json(with_url(asset)))
@@ -353,7 +404,7 @@ async fn delete_one(
 
 /// Load an asset's raw bytes to use as a derivation reference: object storage by
 /// key, or an inline `data:` URL decoded in place.
-async fn asset_bytes(
+pub(crate) async fn asset_bytes(
     state: &AppState,
     s3_key: &str,
     mime: Option<&str>,
@@ -383,10 +434,12 @@ async fn asset_bytes(
     }
 }
 
-/// Build a derivation prompt: instruction + the canon's style rules + negatives.
-fn compile_prompt(instruction: &str, canon: &Value) -> String {
+/// Build a derivation/generation prompt: instruction + the canon's style rules
+/// + the vertical's framing hint + negatives. `canon` is optional so the
+/// vertical framing still applies before a project has defined its canon.
+fn compile_prompt(instruction: &str, canon: Option<&Value>, vertical: &str) -> String {
     let style = canon
-        .get("style")
+        .and_then(|c| c.get("style"))
         .and_then(Value::as_object)
         .map(|o| {
             o.values()
@@ -397,7 +450,7 @@ fn compile_prompt(instruction: &str, canon: &Value) -> String {
         })
         .unwrap_or_default();
     let negative = canon
-        .get("negative")
+        .and_then(|c| c.get("negative"))
         .and_then(Value::as_array)
         .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("; "))
         .unwrap_or_default();
@@ -406,11 +459,30 @@ fn compile_prompt(instruction: &str, canon: &Value) -> String {
     if !style.is_empty() {
         p.push_str(&format!(" Maintain this exact art style: {style}."));
     }
-    p.push_str(" One centered isolated asset, transparent background.");
+    p.push_str(&format!(" {}", crate::verticals::get(vertical).render_hint));
     if !negative.is_empty() {
         p.push_str(&format!(" Must NOT include: {negative}."));
     }
     p
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compile_prompt;
+
+    #[test]
+    fn vertical_render_hint_is_applied() {
+        let game = compile_prompt("draw a sword", None, "game_2d");
+        assert!(game.contains("One centered isolated asset, transparent background."));
+
+        let manhwa = compile_prompt("draw a sword", None, "manhwa");
+        assert!(manhwa.contains("webtoon panel-ready"));
+        assert!(!manhwa.contains("One centered isolated asset"));
+
+        // Unknown vertical falls back to the default (game_2d) hint.
+        let unknown = compile_prompt("draw a sword", None, "bogus");
+        assert!(unknown.contains("One centered isolated asset, transparent background."));
+    }
 }
 
 /// Stream an asset's image bytes. Stable, same-origin URL safe to embed in a

@@ -1,17 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { PaletteIcon, SpinnerGapIcon, CheckIcon } from '@phosphor-icons/react'
+import { PaletteIcon, SpinnerGapIcon, CheckIcon, ClockCounterClockwiseIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
-
-// Style rules the canon captures. Free-text; the backend stores them as JSONB.
-const STYLE_FIELDS = [
-  ['render_style', 'Render style', '16-bit pixel art, retro SNES-era sprite'],
-  ['perspective', 'Perspective', 'side view'],
-  ['palette', 'Palette', 'warm earthy tones, ~16 colors'],
-  ['outline', 'Outline', 'clean 1px dark outline'],
-  ['shading', 'Shading', 'flat shading with light dithering'],
-  ['composition', 'Composition', 'one centered isolated asset, transparent bg'],
-] as const
+import { verticalConfig } from '../verticals'
 
 type CanonData = { style?: Record<string, string>; negative?: string[] }
 
@@ -19,13 +10,19 @@ type CanonData = { style?: Record<string, string>; negative?: string[] }
  * Define a project's canon — the style rules every derivation is bound to.
  * Each save appends a new version (lineage handled by the backend).
  */
-export function CanonView({ projectId }: { projectId: string }) {
+export function CanonView({ projectId, vertical }: { projectId: string; vertical?: string }) {
+  const STYLE_FIELDS = verticalConfig(vertical).canonFields
   const [style, setStyle] = useState<Record<string, string>>({})
   const [negative, setNegative] = useState('')
   const [version, setVersion] = useState<number | null>(null)
+  const [history, setHistory] = useState<api.Canon[]>([])
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function loadHistory() {
+    api.getCanonHistory(projectId).then(setHistory).catch(() => {})
+  }
 
   useEffect(() => {
     api
@@ -38,6 +35,8 @@ export function CanonView({ projectId }: { projectId: string }) {
         setVersion(c.version)
       })
       .catch(() => {})
+    loadHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   async function save(e: FormEvent) {
@@ -57,6 +56,7 @@ export function CanonView({ projectId }: { projectId: string }) {
       const c = await api.saveCanon(projectId, data)
       setVersion(c.version)
       setSaved(true)
+      loadHistory()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Save failed.')
     } finally {
@@ -98,6 +98,34 @@ export function CanonView({ projectId }: { projectId: string }) {
               className="resize-y rounded-[10px] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
             />
           </label>
+
+          {history.length > 0 && (
+            <div className="mt-2 border-t border-white/8 pt-4">
+              <p className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-text-dim">
+                <ClockCounterClockwiseIcon size={14} />
+                Version history
+              </p>
+              <ol className="space-y-1.5">
+                {history.map((c) => (
+                  <li key={c.id} className="flex items-start gap-2.5 rounded-[10px] bg-surface-2/40 px-3 py-2">
+                    <span
+                      className={`mt-px shrink-0 rounded-[6px] px-1.5 py-0.5 text-[10px] font-semibold ${
+                        c.version === version ? 'bg-teal/20 text-teal-bright' : 'bg-white/8 text-text-dim'
+                      }`}
+                    >
+                      v{c.version}
+                    </span>
+                    <p className="min-w-0 flex-1 text-xs text-text-muted">
+                      {c.change_note ?? <span className="text-text-dim">no change note</span>}
+                    </p>
+                    <span className="mt-px shrink-0 text-[10px] text-text-dim">
+                      {new Date(c.created_at).toLocaleDateString()}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       </div>
 

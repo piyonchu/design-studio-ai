@@ -1,25 +1,45 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeftIcon } from '@phosphor-icons/react'
+import {
+  ArrowLeftIcon,
+  PaletteIcon,
+  SquaresFourIcon,
+  TrayIcon,
+  TreeStructureIcon,
+  StackIcon,
+  ClockCounterClockwiseIcon,
+} from '@phosphor-icons/react'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
 import { AssetLibrary } from './assets/AssetLibrary'
+import { ReviewQueue } from './assets/ReviewQueue'
+import { LineageView } from './assets/LineageView'
 import { CanonView } from './canon/CanonView'
+import { ContextAsk } from './canon/ContextAsk'
 import { CollectionsView } from './collections/CollectionsView'
+import { ActivityView } from './activity/ActivityView'
 
-type Tab = 'canon' | 'assets' | 'collections'
+type Tab = 'canon' | 'assets' | 'review' | 'lineage' | 'collections' | 'activity'
+
+const NAV: { id: Tab; label: string; icon: ComponentType<{ size?: number; weight?: 'fill' | 'regular' }> }[] = [
+  { id: 'assets', label: 'Board', icon: SquaresFourIcon },
+  { id: 'canon', label: 'Canon', icon: PaletteIcon },
+  { id: 'review', label: 'Review', icon: TrayIcon },
+  { id: 'lineage', label: 'Lineage', icon: TreeStructureIcon },
+  { id: 'collections', label: 'Collections', icon: StackIcon },
+  { id: 'activity', label: 'Activity', icon: ClockCounterClockwiseIcon },
+]
 
 /**
- * Project view — the asset studio for one project. Currently the asset library;
- * the full CanonForge board (canon, derive, review, collections, export) builds
- * on top of this per PLAN.md.
+ * Project view — the asset studio shell. A left rail switches between the canon,
+ * asset board, review queue, lineage, and collections views.
  */
 export function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
 
   const [project, setProject] = useState<api.Project | null>(null)
-  const [tab, setTab] = useState<Tab>('canon')
+  const [tab, setTab] = useState<Tab>('assets')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -39,49 +59,66 @@ export function ProjectWorkspace() {
   }, [projectId])
 
   return (
-    <div className="relative flex h-[100dvh] flex-col">
+    <div className="relative flex h-[100dvh]">
       <div className="app-aurora" />
 
-      <header className="relative z-20 flex items-center gap-3 px-4 py-3">
-        <button
-          onClick={() => navigate('/')}
-          aria-label="Back to workspace"
-          className="grid size-9 place-items-center rounded-[10px] text-text-dim transition hover:bg-white/5 hover:text-text"
-        >
-          <ArrowLeftIcon size={18} />
-        </button>
-        <p className="shrink-0 text-sm font-semibold text-text">{project?.name ?? 'Project'}</p>
+      {/* Left rail */}
+      <aside className="relative z-20 flex w-48 shrink-0 flex-col gap-1 px-3 py-3">
+        <div className="flex items-center gap-2 px-1 py-2">
+          <button
+            onClick={() => navigate('/')}
+            aria-label="Back to workspace"
+            className="grid size-8 shrink-0 place-items-center rounded-[10px] text-text-dim transition hover:bg-white/5 hover:text-text"
+          >
+            <ArrowLeftIcon size={18} />
+          </button>
+          <p className="truncate text-sm font-semibold text-text" title={project?.name ?? undefined}>
+            {project?.name ?? 'Project'}
+          </p>
+        </div>
 
-        <nav className="ml-2 flex items-center gap-1 rounded-[10px] bg-surface-2/50 p-1">
-          {(['canon', 'assets', 'collections'] as Tab[]).map((t) => (
+        <nav className="mt-1 flex flex-col gap-0.5">
+          {NAV.map(({ id, label, icon: Icon }) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`rounded-[8px] px-3 py-1.5 text-sm font-medium capitalize transition ${
-                tab === t ? 'bg-teal text-bg' : 'text-text-dim hover:text-text'
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium transition ${
+                tab === id ? 'bg-teal/15 text-teal-bright' : 'text-text-dim hover:bg-white/5 hover:text-text'
               }`}
             >
-              {t}
+              <Icon size={17} weight={tab === id ? 'fill' : 'regular'} />
+              {label}
             </button>
           ))}
         </nav>
-      </header>
+      </aside>
 
-      {error && (
-        <p className="relative z-10 mx-4 mb-2 rounded-[10px] border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
-          {error}
-        </p>
-      )}
-
-      <div className="relative z-10 flex min-h-0 flex-1 px-3 pb-3">
-        {projectId &&
-          (tab === 'canon' ? (
-            <CanonView projectId={projectId} />
-          ) : tab === 'collections' ? (
-            <CollectionsView projectId={projectId} />
-          ) : (
-            <AssetLibrary projectId={projectId} />
-          ))}
+      {/* Content */}
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col py-3 pr-3">
+        {error && (
+          <p className="mb-2 rounded-[10px] border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+            {error}
+          </p>
+        )}
+        <div className="flex min-h-0 flex-1">
+          {projectId &&
+            (tab === 'canon' ? (
+              <div className="flex min-h-0 flex-1 flex-col gap-3">
+                <ContextAsk projectId={projectId} />
+                <CanonView projectId={projectId} vertical={project?.vertical} />
+              </div>
+            ) : tab === 'review' ? (
+              <ReviewQueue projectId={projectId} />
+            ) : tab === 'lineage' ? (
+              <LineageView projectId={projectId} />
+            ) : tab === 'collections' ? (
+              <CollectionsView projectId={projectId} />
+            ) : tab === 'activity' ? (
+              <ActivityView projectId={projectId} />
+            ) : (
+              <AssetLibrary projectId={projectId} vertical={project?.vertical} />
+            ))}
+        </div>
       </div>
     </div>
   )

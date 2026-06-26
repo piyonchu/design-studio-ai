@@ -29,7 +29,7 @@ pub enum AssetKind {
 
 /// Review lifecycle: everything starts `Candidate`; only `Approved` enters the
 /// canon and influences future derivations.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "asset_status", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum AssetStatus {
@@ -54,6 +54,8 @@ pub struct Project {
     pub workspace_id: Uuid,
     pub name: String,
     pub brief: Option<String>,
+    /// Which vertical pack drives presets/canon hints: 'game_2d' | 'manhwa'.
+    pub vertical: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -69,6 +71,8 @@ pub struct CreateProject {
     pub name: String,
     #[serde(default)]
     pub brief: Option<String>,
+    #[serde(default)]
+    pub vertical: Option<String>,
 }
 
 // ── Canon (versioned style rules + exemplars) ─────────────────────────────────
@@ -80,6 +84,9 @@ pub struct Canon {
     pub parent_id: Option<Uuid>,
     pub version: i32,
     pub data: Value,
+    /// Auto-generated "what changed vs the previous version" note (a deterministic
+    /// diff, not an LLM guess). Null on legacy rows.
+    pub change_note: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -133,6 +140,8 @@ pub struct SignupResponse {
 pub struct Asset {
     pub id: Uuid,
     pub project_id: Uuid,
+    /// Optional explicit display name; null → UI derives one from role + prompt.
+    pub name: Option<String>,
     pub kind: AssetKind,
     /// Object-storage key (S3/MinIO), or a `data:`/`http` URL in inline mode.
     pub s3_key: String,
@@ -147,6 +156,8 @@ pub struct Asset {
     /// was produced under (null for uploaded/seeded assets).
     pub derivation: Option<String>,
     pub canon_version_id: Option<Uuid>,
+    /// Approved style anchor: future generation conditions on it (the moat loop).
+    pub exemplar: bool,
     pub created_at: DateTime<Utc>,
     /// Stable, browser-usable URL for the image. Not stored — filled in by the
     /// route after fetching (see `routes::assets`). For object-stored assets
@@ -179,6 +190,10 @@ pub struct UpdateAsset {
     pub role: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub exemplar: Option<bool>,
 }
 
 /// An asset plus its lineage: the base it was derived from, and its derivatives.
@@ -227,4 +242,150 @@ pub struct CreateCollection {
 #[derive(Debug, Deserialize)]
 pub struct AddItems {
     pub asset_ids: Vec<Uuid>,
+}
+
+// ── Generation recipes (reusable derivation templates) ───────────────────────
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct Recipe {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub instruction: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateRecipe {
+    pub name: String,
+    pub instruction: String,
+}
+
+// ── Comments (collaboration) ─────────────────────────────────────────────────
+
+/// A comment on an asset, with the author's email joined for display. The
+/// author is nullable: a deleted account leaves the discussion intact.
+#[derive(Debug, Serialize, FromRow)]
+pub struct AssetComment {
+    pub id: Uuid,
+    pub asset_id: Uuid,
+    pub author_id: Option<Uuid>,
+    pub author_email: Option<String>,
+    pub body: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateComment {
+    pub body: String,
+}
+
+// ── Lineage + canon propagation ──────────────────────────────────────────────
+
+/// A directed edge in the asset graph (currently always `derived_from`).
+#[derive(Debug, Serialize, FromRow)]
+pub struct AssetLink {
+    pub from_asset: Uuid,
+    pub to_asset: Uuid,
+    pub relation: String,
+}
+
+/// The whole project graph in one payload: every asset (the nodes) + the
+/// derivation edges. The frontend lays out roots → derivatives from this.
+#[derive(Debug, Serialize)]
+pub struct LineageGraph {
+    pub assets: Vec<Asset>,
+    pub links: Vec<AssetLink>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReconcileRequest {
+    pub asset_ids: Vec<Uuid>,
+}
+
+// ── Activity feed ────────────────────────────────────────────────────────────
+
+/// One entry in a project's merged activity stream (asset / comment / canon).
+#[derive(Debug, Serialize)]
+pub struct ActivityEvent {
+    pub kind: String, // "asset" | "comment" | "canon"
+    pub at: DateTime<Utc>,
+    pub summary: String,
+    /// Set for asset + comment events so the UI can jump to the asset.
+    pub asset_id: Option<Uuid>,
+}
+
+// ── Search / RAG ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SimilarCheck {
+    pub prompt: String,
+}
+
+/// A semantic-context snippet (brief / asset prompt / comment / canon) with its
+/// relevance to the question. Powers "why was this created / what's it for".
+#[derive(Debug, Serialize, FromRow)]
+pub struct ContextHit {
+    pub source_kind: String,
+    pub source_id: Option<Uuid>,
+    pub content: String,
+    pub score: f64,
+}
+
+/// An LLM-synthesized answer over the retrieved snippets, plus the sources it
+/// drew from (RAG: retrieve → synthesize).
+#[derive(Debug, Serialize)]
+pub struct ContextAnswer {
+    pub answer: String,
+    pub sources: Vec<ContextHit>,
+}
+
+/// An asset plus its similarity score (cosine, 1.0 = identical) for search,
+/// "find similar", and the pre-generate dedup nudge.
+#[derive(Debug, Serialize, FromRow)]
+pub struct ScoredAsset {
+    #[serde(flatten)]
+    #[sqlx(flatten)]
+    pub asset: Asset,
+    pub score: f64,
+}
+
+// ── Export ───────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct ExportRequest {
+    pub asset_ids: Vec<Uuid>,
+}
+
+/// One asset's pre-export verdict: the filename it would get in the pack, its
+/// decoded raster facts, and any issues a deterministic check surfaced.
+#[derive(Debug, Serialize)]
+pub struct AssetCheck {
+    pub id: Uuid,
+    pub filename: String,
+    pub role: Option<String>,
+    /// Grouping key (slugged role, or "ungrouped"). Drives the zip folder + the
+    /// manifest groups so an engine adapter can map groups → animations later.
+    pub group: String,
+    pub tags: Vec<String>,
+    pub status: AssetStatus,
+    pub format: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub has_alpha: Option<bool>,
+    pub issues: Vec<String>,
+    /// True when nothing blocking was found (issues may still carry warnings).
+    pub ok: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportReport {
+    pub assets: Vec<AssetCheck>,
+    pub ok_count: usize,
+    pub issue_count: usize,
 }

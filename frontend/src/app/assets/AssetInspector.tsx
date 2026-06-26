@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon } from '@phosphor-icons/react'
+import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon, StarIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
+import { CommentThread } from './CommentThread'
 
 /**
  * Asset inspector — a slide-over for one asset: preview, editable role/tags,
@@ -22,6 +23,7 @@ export function AssetInspector({
   onDeleted: (id: string) => void
 }) {
   const [detail, setDetail] = useState<api.AssetDetail | null>(null)
+  const [name, setName] = useState('')
   const [role, setRole] = useState('')
   const [tags, setTags] = useState('')
   const [busy, setBusy] = useState(false)
@@ -47,6 +49,7 @@ export function AssetInspector({
       .then((d) => {
         if (!alive) return
         setDetail(d)
+        setName(d.name ?? '')
         setRole(d.role ?? '')
         setTags(d.tags.join(', '))
         api.listCollections(d.project_id).then((cs) => alive && setCollections(cs)).catch(() => {})
@@ -66,6 +69,7 @@ export function AssetInspector({
     setSaved(false)
     try {
       const updated = await api.updateAsset(detail.id, {
+        name: name.trim(),
         role: role.trim(),
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       })
@@ -74,6 +78,21 @@ export function AssetInspector({
       setSaved(true)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Save failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleExemplar() {
+    if (!detail || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const updated = await api.updateAsset(detail.id, { exemplar: !detail.exemplar })
+      setDetail((d) => (d ? { ...d, ...updated } : d))
+      onChanged(updated)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Update failed.')
     } finally {
       setBusy(false)
     }
@@ -124,11 +143,18 @@ export function AssetInspector({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <img
-              src={detail.url}
-              alt={detail.role ?? ''}
-              className="mb-3 aspect-square w-full rounded-[12px] object-contain ring-1 ring-white/10"
-            />
+            {detail.kind === 'audio' ? (
+              <div className="mb-3 flex aspect-square w-full flex-col items-center justify-center gap-3 rounded-[12px] bg-surface/60 p-4 ring-1 ring-white/10">
+                <MusicNotesIcon size={40} weight="fill" className="text-teal-bright" />
+                <audio controls src={detail.url} className="w-full" />
+              </div>
+            ) : (
+              <img
+                src={detail.url}
+                alt={detail.role ?? ''}
+                className="mb-3 aspect-square w-full rounded-[12px] object-contain ring-1 ring-white/10"
+              />
+            )}
 
             <div className="mb-4 flex flex-wrap items-center gap-1.5 text-[11px]">
               <span className="rounded-[6px] bg-white/8 px-1.5 py-0.5 text-text-dim">{detail.source_kind}</span>
@@ -136,7 +162,30 @@ export function AssetInspector({
               {detail.canon_version_id && (
                 <span className="rounded-[6px] bg-white/8 px-1.5 py-0.5 text-text-dim">canon-bound</span>
               )}
+              {detail.exemplar && (
+                <span className="inline-flex items-center gap-1 rounded-[6px] bg-amber-400/15 px-1.5 py-0.5 text-amber-200">
+                  <StarIcon size={11} weight="fill" /> exemplar
+                </span>
+              )}
             </div>
+
+            <button
+              onClick={toggleExemplar}
+              disabled={busy || (detail.status !== 'approved' && !detail.exemplar)}
+              title={
+                detail.status !== 'approved'
+                  ? 'Approve the asset first — only approved assets shape the canon'
+                  : 'Approved exemplars condition future generation'
+              }
+              className={`mb-4 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border px-3 py-2 text-sm transition disabled:opacity-40 ${
+                detail.exemplar
+                  ? 'border-amber-400/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15'
+                  : 'border-white/10 text-text-dim hover:text-text'
+              }`}
+            >
+              <StarIcon size={14} weight={detail.exemplar ? 'fill' : 'regular'} />
+              {detail.exemplar ? 'Style exemplar (conditions new gens)' : 'Use as style exemplar'}
+            </button>
 
             {detail.derivation && (
               <p className="mb-4 text-xs text-text-dim">
@@ -144,6 +193,15 @@ export function AssetInspector({
               </p>
             )}
 
+            <label className="mb-3 grid gap-1.5">
+              <span className="text-xs font-medium text-text-dim">Name</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={api.displayName(detail)}
+                className="rounded-[10px] bg-surface/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
+              />
+            </label>
             <label className="mb-3 grid gap-1.5">
               <span className="text-xs font-medium text-text-dim">Role</span>
               <input
@@ -244,6 +302,10 @@ export function AssetInspector({
             {!detail.base && detail.derivatives.length === 0 && (
               <p className="mt-3 text-xs text-text-dim">No lineage yet — derive from this asset to grow it.</p>
             )}
+
+            <div className="mt-6 border-t border-white/8 pt-4">
+              <CommentThread assetId={detail.id} />
+            </div>
 
             <div className="mt-6 border-t border-white/8 pt-3">
               {confirming ? (

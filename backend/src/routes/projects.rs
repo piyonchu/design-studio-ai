@@ -27,13 +27,23 @@ async fn create(
     // Must be at least an editor in the target workspace (404 if not a member).
     auth::require_member(&state.pool, workspace_id, user.id, WorkspaceRole::Editor).await?;
 
+    // The vertical (if given) must be a registered pack — the registry is the
+    // authority. Omitted → defaults to game_2d via COALESCE below.
+    if let Some(v) = &body.vertical {
+        if !crate::verticals::is_known(v) {
+            return Err(AppError::BadRequest(format!("unknown vertical '{v}'")));
+        }
+    }
+
     let project = sqlx::query_as::<_, Project>(
-        "INSERT INTO projects (workspace_id, name, brief) VALUES ($1, $2, $3)
-         RETURNING id, workspace_id, name, brief, created_at",
+        "INSERT INTO projects (workspace_id, name, brief, vertical)
+         VALUES ($1, $2, $3, COALESCE($4, 'game_2d'))
+         RETURNING id, workspace_id, name, brief, vertical, created_at",
     )
     .bind(workspace_id)
     .bind(body.name)
     .bind(body.brief)
+    .bind(body.vertical)
     .fetch_one(&state.pool)
     .await?;
     Ok((StatusCode::CREATED, Json(project)))
@@ -47,7 +57,7 @@ async fn list(
     auth::require_member(&state.pool, workspace_id, user.id, WorkspaceRole::Viewer).await?;
 
     let rows = sqlx::query_as::<_, Project>(
-        "SELECT id, workspace_id, name, brief, created_at
+        "SELECT id, workspace_id, name, brief, vertical, created_at
          FROM projects WHERE workspace_id = $1 ORDER BY created_at DESC",
     )
     .bind(workspace_id)
@@ -64,7 +74,7 @@ async fn get_one(
     auth::require_project_access(&state.pool, id, user.id, WorkspaceRole::Viewer).await?;
 
     let project = sqlx::query_as::<_, Project>(
-        "SELECT id, workspace_id, name, brief, created_at FROM projects WHERE id = $1",
+        "SELECT id, workspace_id, name, brief, vertical, created_at FROM projects WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)

@@ -10,19 +10,17 @@ import {
   CheckSquareIcon,
   FlagIcon,
   StackPlusIcon,
+  PackageIcon,
+  MusicNotesIcon,
+  WarningIcon,
+  StarIcon,
+  BookmarkSimpleIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { AssetInspector } from './AssetInspector'
-
-// Spike-proven generative derivations (recolor stays out — it drifts identity
-// generatively; it belongs on the deterministic path).
-const PRESETS = [
-  { id: 'walk', label: 'Walk', text: 'Show the SAME character in a mid-walk side stride pose. Keep identical identity, palette, and proportions.' },
-  { id: 'action', label: 'Action', text: 'Show the SAME character in a dynamic action pose. Keep identical identity, palette, and proportions.' },
-  { id: 'variant', label: 'Variant', text: 'An outfit/expression variant of the SAME character. Keep identical shape and proportions.' },
-  { id: 'matching', label: 'Matching', text: 'A matching set member in the EXACT same art style, palette, and outline weight. Different subject, same world.' },
-]
+import { ExportDialog } from '../export/ExportDialog'
+import { verticalConfig } from '../verticals'
 
 const STATUSES: api.AssetStatus[] = ['candidate', 'approved', 'needs_review', 'rejected']
 
@@ -47,10 +45,12 @@ const STATUS_DOT: Record<api.AssetStatus, string> = {
  * language, and multi-select batch actions (approve / add-to-collection).
  * Click a tile to pick a derivation base; toggle Select for batch mode.
  */
-export function AssetLibrary({ projectId }: { projectId: string }) {
+export function AssetLibrary({ projectId, vertical }: { projectId: string; vertical?: string }) {
+  const PRESETS = verticalConfig(vertical).derivePresets
   const [assets, setAssets] = useState<api.Asset[]>([])
   const [collections, setCollections] = useState<api.CollectionSummary[]>([])
   const [prompt, setPrompt] = useState('')
+  const [genMode, setGenMode] = useState<'image' | 'audio'>('image')
   const [baseId, setBaseId] = useState<string | null>(null)
   const [instruction, setInstruction] = useState('')
   const [busy, setBusy] = useState(false)
@@ -59,6 +59,10 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
 
   // Filters
   const [query, setQuery] = useState('')
+  // Server-side smart-search hits (null = no active search → show all assets).
+  const [searchHits, setSearchHits] = useState<api.Asset[] | null>(null)
+  // Pre-generate dedup nudge: existing assets close to the typed prompt.
+  const [dupHits, setDupHits] = useState<api.ScoredAsset[]>([])
   const [roles, setRoles] = useState<Set<string>>(new Set())
   const [statuses, setStatuses] = useState<Set<api.AssetStatus>>(new Set())
   const [sources, setSources] = useState<Set<string>>(new Set())
@@ -70,11 +74,63 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchCol, setBatchCol] = useState('')
+  const [exportIds, setExportIds] = useState<string[] | null>(null)
+
+  const [recipes, setRecipes] = useState<api.Recipe[]>([])
 
   useEffect(() => {
     api.listAssets(projectId).then(setAssets).catch(() => {})
     api.listCollections(projectId).then(setCollections).catch(() => {})
+    api.listRecipes(projectId).then(setRecipes).catch(() => {})
   }, [projectId])
+
+  async function saveRecipe() {
+    const ins = instruction.trim()
+    if (!ins || busy) return
+    const name = ins.split(/\s+/).slice(0, 4).join(' ').slice(0, 40)
+    try {
+      const r = await api.createRecipe(projectId, name, ins)
+      setRecipes((rs) => [r, ...rs])
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Save recipe failed.')
+    }
+  }
+
+  async function removeRecipe(id: string) {
+    try {
+      await api.deleteRecipe(id)
+      setRecipes((rs) => rs.filter((r) => r.id !== id))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Debounced smart search — server-side semantic/keyword ranking. Empty query
+  // clears hits and falls back to the full (client-filtered) library.
+  useEffect(() => {
+    const q = query.trim()
+    if (!q) {
+      setSearchHits(null)
+      return
+    }
+    const t = setTimeout(() => {
+      api.searchAssets(projectId, q).then(setSearchHits).catch(() => setSearchHits(null))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [query, projectId, assets])
+
+  // Debounced pre-generate dedup nudge (image mode only).
+  useEffect(() => {
+    const p = prompt.trim()
+    if (genMode !== 'image' || baseId || p.length < 4) {
+      setDupHits([])
+      return
+    }
+    const t = setTimeout(() => {
+      api.similarCheck(projectId, p).then(setDupHits).catch(() => setDupHits([]))
+    }, 500)
+    return () => clearTimeout(t)
+  }, [prompt, genMode, baseId, projectId])
 
   // Lazily load member ids when a collection filter is selected.
   useEffect(() => {
@@ -104,20 +160,18 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
   }, [assets])
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    // When a search is active, server hits are the base (already ranked); the
+    // rail filters narrow further. No client text-match — the server ranks.
+    const base = searchHits ?? assets
     const members = collectionId ? collMembers[collectionId] : null
-    return assets.filter((a) => {
+    return base.filter((a) => {
       if (roles.size && (!a.role || !roles.has(a.role))) return false
       if (statuses.size && !statuses.has(a.status)) return false
       if (sources.size && !sources.has(a.source_kind)) return false
       if (collectionId && !(members?.has(a.id) ?? false)) return false
-      if (q) {
-        const hay = [a.role, a.prompt, a.derivation, a.kind, ...a.tags].filter(Boolean).join(' ').toLowerCase()
-        if (!hay.includes(q)) return false
-      }
       return true
     })
-  }, [assets, query, roles, statuses, sources, collectionId, collMembers])
+  }, [assets, searchHits, roles, statuses, sources, collectionId, collMembers])
 
   const activeFilters = roles.size + statuses.size + sources.size + (collectionId ? 1 : 0) + (query.trim() ? 1 : 0)
 
@@ -152,9 +206,13 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
     setBusy(true)
     setError(null)
     try {
-      const created = await api.generateAssets(projectId, p, 2)
+      const created =
+        genMode === 'audio'
+          ? await api.generateAudio(projectId, p, 2)
+          : await api.generateAssets(projectId, p, 2)
       setAssets((a) => [...created, ...a])
       setPrompt('')
+      setDupHits([])
     } catch (err) {
       genError(err)
     } finally {
@@ -196,6 +254,27 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
       setAssets((a) => [...created, ...a])
     } catch (err) {
       genError(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // "Make the other 200": derive one of every preset from the base in a single
+  // action — a whole consistent set (walk/action/variant/... or manhwa's
+  // expression/pose/...). Each is its own gen; we collect what succeeds.
+  async function deriveAll() {
+    if (!baseId || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      for (const p of PRESETS) {
+        try {
+          const created = await api.deriveAssets(projectId, baseId, p.text, 1)
+          setAssets((a) => [...created, ...a])
+        } catch (err) {
+          genError(err)
+        }
+      }
     } finally {
       setBusy(false)
     }
@@ -445,6 +524,14 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                 </button>
               </div>
             )}
+            <button
+              onClick={() => selected.size && setExportIds([...selected])}
+              disabled={!selected.size || busy}
+              className="inline-flex items-center gap-1.5 rounded-[8px] border border-white/10 px-3 py-1.5 text-sm text-text-dim transition hover:text-text disabled:opacity-40"
+            >
+              <PackageIcon size={14} />
+              Export
+            </button>
             {selected.size > 0 && (
               <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-text-dim hover:text-text">
                 Clear selection
@@ -456,7 +543,16 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
             <div className="mx-auto max-w-2xl">
               <div className="mb-2 flex items-center gap-2 text-xs text-text-dim">
                 <span>Deriving from selected base — pick a preset or write an instruction</span>
-                <button onClick={() => setBaseId(null)} className="ml-auto text-text-dim hover:text-text">
+                <button
+                  onClick={deriveAll}
+                  disabled={busy}
+                  title="Derive one of every preset — a whole consistent set"
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] border border-teal/30 bg-teal/10 px-2.5 py-1 text-teal-bright transition hover:bg-teal/15 disabled:opacity-50"
+                >
+                  {busy ? <SpinnerGapIcon size={12} className="animate-spin" /> : <SparkleIcon size={12} weight="fill" />}
+                  Derive all {PRESETS.length}
+                </button>
+                <button onClick={() => setBaseId(null)} className="text-text-dim hover:text-text">
                   Clear
                 </button>
               </div>
@@ -471,6 +567,28 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                   </button>
                 ))}
               </div>
+              {recipes.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim">Recipes</span>
+                  {recipes.map((r) => (
+                    <span
+                      key={r.id}
+                      className="group inline-flex items-center gap-1 rounded-[8px] border border-teal/25 bg-teal/8 py-1 pl-2.5 pr-1 text-xs text-teal-bright"
+                    >
+                      <button onClick={() => setInstruction(r.instruction)} title={r.instruction}>
+                        {r.name}
+                      </button>
+                      <button
+                        onClick={() => removeRecipe(r.id)}
+                        aria-label="Delete recipe"
+                        className="text-text-dim opacity-0 transition hover:text-rose-300 group-hover:opacity-100"
+                      >
+                        <XIcon size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="flex items-center gap-2 rounded-[12px] bg-surface-2/60 p-2">
                 <input
                   value={instruction}
@@ -478,6 +596,15 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                   placeholder="Derivation instruction…"
                   className="flex-1 bg-transparent px-2 text-sm text-text outline-none placeholder:text-text-dim"
                 />
+                <button
+                  onClick={saveRecipe}
+                  disabled={!instruction.trim()}
+                  title="Save this instruction as a reusable recipe"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] border border-white/10 px-2.5 py-2 text-xs text-text-dim transition hover:text-text disabled:opacity-40"
+                >
+                  <BookmarkSimpleIcon size={14} />
+                  Save
+                </button>
                 <button
                   onClick={derive}
                   disabled={busy || !instruction.trim()}
@@ -492,10 +619,29 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
         ) : (
           <form onSubmit={generate} className="border-b border-white/8 p-4">
             <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-[12px] bg-surface-2/60 p-2">
+              <div className="flex shrink-0 items-center rounded-[8px] bg-surface/60 p-0.5">
+                {(['image', 'audio'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setGenMode(m)}
+                    aria-label={`Generate ${m}`}
+                    className={`grid size-7 place-items-center rounded-[6px] transition ${
+                      genMode === m ? 'bg-teal text-bg' : 'text-text-dim hover:text-text'
+                    }`}
+                  >
+                    {m === 'image' ? <ImageIcon size={14} weight="fill" /> : <MusicNotesIcon size={14} weight="fill" />}
+                  </button>
+                ))}
+              </div>
               <input
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe an asset to generate… (or click a tile to derive)"
+                placeholder={
+                  genMode === 'audio'
+                    ? 'Describe a sound to generate… (e.g. sword clang, ambient loop)'
+                    : 'Describe an asset to generate… (or click a tile to derive)'
+                }
                 className="flex-1 bg-transparent px-2 text-sm text-text outline-none placeholder:text-text-dim"
               />
               <button
@@ -511,6 +657,34 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
         )}
 
         {error && <p className="px-5 pt-3 text-xs text-rose-300">{error}</p>}
+
+        {!selecting && !baseId && dupHits.length > 0 && (
+          <div className="mx-5 mt-3 flex items-center gap-3 rounded-[10px] border border-amber-400/25 bg-amber-400/8 px-3 py-2">
+            <WarningIcon size={16} weight="fill" className="shrink-0 text-amber-300" />
+            <p className="shrink-0 text-xs text-amber-100">
+              {dupHits.length} similar asset{dupHits.length > 1 ? 's' : ''} already exist
+            </p>
+            <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
+              {dupHits.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setInspectId(s.id)}
+                  title={`${s.prompt ?? s.role ?? ''} · ${Math.round(s.score * 100)}% match`}
+                  className="size-9 shrink-0 overflow-hidden rounded-[7px] ring-1 ring-white/15 transition hover:ring-teal"
+                >
+                  <img src={s.url} alt="" className="size-full object-cover" />
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setDupHits([])}
+              aria-label="Dismiss"
+              className="shrink-0 text-text-dim hover:text-text"
+            >
+              <XIcon size={14} />
+            </button>
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           {assets.length === 0 ? (
@@ -532,7 +706,19 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                     className={`group relative cursor-pointer overflow-hidden rounded-[12px] transition ${ring}`}
                     title={a.derivation ?? a.prompt ?? a.role ?? ''}
                   >
-                    <img src={a.url} alt={a.prompt ?? a.role ?? ''} className="aspect-square w-full object-cover" />
+                    {a.kind === 'audio' ? (
+                      <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-surface-2/50 p-3">
+                        <MusicNotesIcon size={26} weight="fill" className="text-teal-bright" />
+                        <audio
+                          controls
+                          src={a.url}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full"
+                        />
+                      </div>
+                    ) : (
+                      <img src={a.url} alt={a.prompt ?? a.role ?? ''} className="aspect-square w-full object-cover" />
+                    )}
 
                     {/* Select checkbox (select mode) */}
                     {selecting && (
@@ -548,6 +734,15 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                     {!selecting && (
                       <span className="absolute left-1.5 top-1.5 rounded-[6px] bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur">
                         {a.source_kind}
+                      </span>
+                    )}
+
+                    {!selecting && a.exemplar && (
+                      <span
+                        className="absolute bottom-1.5 left-1.5 z-10 grid size-5 place-items-center rounded-[6px] bg-amber-400/85 text-bg"
+                        title="Style exemplar — conditions new generations"
+                      >
+                        <StarIcon size={12} weight="fill" />
                       </span>
                     )}
 
@@ -601,11 +796,9 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                       </div>
                     )}
 
-                    {(a.derivation ?? a.prompt ?? a.role) && (
-                      <figcaption className="truncate px-2 py-1.5 text-[11px] text-text-dim">
-                        {a.derivation ?? a.prompt ?? a.role}
-                      </figcaption>
-                    )}
+                    <figcaption className="truncate px-2 py-1.5 text-[11px] text-text-dim">
+                      {api.displayName(a)}
+                    </figcaption>
                   </figure>
                 )
               })}
@@ -626,6 +819,15 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
           if (baseId === id) setBaseId(null)
         }}
       />
+
+      {exportIds && (
+        <ExportDialog
+          projectId={projectId}
+          assetIds={exportIds}
+          title={`${exportIds.length} selected`}
+          onClose={() => setExportIds(null)}
+        />
+      )}
     </div>
   )
 }

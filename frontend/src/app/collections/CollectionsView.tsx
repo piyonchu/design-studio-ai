@@ -6,9 +6,11 @@ import {
   TrashIcon,
   ArrowLeftIcon,
   XIcon,
+  PackageIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
+import { ExportDialog } from '../export/ExportDialog'
 
 /**
  * Collections — asset packs. List view (cards + create) and a detail view
@@ -20,6 +22,7 @@ export function CollectionsView({ projectId }: { projectId: string }) {
   const [detail, setDetail] = useState<api.CollectionDetail | null>(null)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -97,12 +100,28 @@ export function CollectionsView({ projectId }: { projectId: string }) {
           <p className="text-sm font-medium text-text">{detail?.name ?? 'Collection'}</p>
           <span className="text-sm text-text-dim">· {detail?.assets.length ?? 0}</span>
           <button
+            onClick={() => setExporting(true)}
+            disabled={!detail || detail.assets.length === 0}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] bg-teal px-3 py-1.5 text-sm font-semibold text-bg transition active:translate-y-px disabled:opacity-40"
+          >
+            <PackageIcon size={14} weight="fill" /> Export
+          </button>
+          <button
             onClick={() => del(openId)}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] border border-white/10 px-3 py-1.5 text-sm text-rose-300 transition hover:text-rose-200"
+            className="inline-flex items-center gap-1.5 rounded-[8px] border border-white/10 px-3 py-1.5 text-sm text-rose-300 transition hover:text-rose-200"
           >
             <TrashIcon size={14} /> Delete pack
           </button>
         </div>
+
+        {exporting && detail && (
+          <ExportDialog
+            projectId={projectId}
+            assetIds={detail.assets.map((a) => a.id)}
+            title={detail.name}
+            onClose={() => setExporting(false)}
+          />
+        )}
         {error && <p className="px-5 pt-3 text-xs text-rose-300">{error}</p>}
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           {!detail ? (

@@ -4,4 +4,8 @@
 //! The earlier text-DSL generation client (Anthropic Messages API for the
 //! UI-as-Code pipeline) was removed in the pivot to a visual asset studio.
 
+pub mod audio;
+pub mod cache;
+pub mod embeddings;
 pub mod images;
+pub mod llm;
