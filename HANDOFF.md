@@ -42,6 +42,7 @@ Open http://localhost:5173 → sign up → open a project.
 - **Smart search / dedup** — `ai/embeddings.rs` (mock feature-hashed embedder, `EMBED_MOCK` default) indexes assets on insert (generate/derive/**upload**/audio) into `visual_embeddings`. Board search box → `/assets/search?q` (semantic ranking); pre-generate nudge → `/assets/similar-check`; `/assets/:id/similar`; `/embeddings/backfill` for imports/old assets. Real text/CLIP model is a localized swap.
 - **Semantic context ("Ask this project")** — `semantic_embeddings` over brief / asset prompts / comments / canon; box atop the Canon tab → `/context?q` (ranked snippets) + `/context/backfill`. Retrieval-only (no LLM synthesis yet).
 - **Smart versioning** — each canon version gets an auto-generated deterministic "what changed" note (`canon.change_note`, mig 0008); `GET /canon/history` + a version-history list in the Canon tab. No LLM.
+- **Asset naming** — `assets.name` (mig 0009, editable in the inspector) with an auto-derived display label (`api.displayName`, role+prompt) used across board/lineage/review; the name drives the export filename.
 - **Audio** — `POST /projects/:id/audio` generates `kind='audio'` assets via `ai/audio.rs` (mock WAV synth; `AUDIO_MOCK=true` default, no hosted provider yet). The board has an image/audio toggle; clips play inline in the grid + inspector.
 - **Export** — pre-export checks (`POST /export/check`: filename, format/dimensions/alpha, issues) + a grouped zip pack (`POST /export`: `manifest.json` with `groups[]` by role/tag + `assets/<group>/<file>`, rejected/undecodable skipped). Triggered from a collection via the Export dialog. Vertical-neutral; engine-specific packers (Godot/Unity) are deferred per PLAN (rule of three) and will consume the grouped manifest.
 
@@ -49,7 +50,7 @@ Open http://localhost:5173 → sign up → open a project.
 - `backend/src/routes/` — `auth, workspaces, projects, canon, assets, audio, collections, comments, lineage, export, search, context`.
 - `backend/src/ai/images.rs` — generate + `derive_image` (img2img) + mock. `backend/src/ai/audio.rs` — audio generation (mock WAV synth) behind the same boundary.
 - `backend/src/storage.rs` — S3/MinIO (+ inline fallback). `backend/src/models.rs` — all DTOs/rows.
-- `backend/migrations/` — `0001` base, `0002` auth, `0003` canon+asset fields, `0004` drop dead UI tables, `0005` derivation (`asset_links`), `0006` collections, `0007` comments, `0008` canon change-note.
+- `backend/migrations/` — `0001` base, `0002` auth, `0003` canon+asset fields, `0004` drop dead UI tables, `0005` derivation (`asset_links`), `0006` collections, `0007` comments, `0008` canon change-note, `0009` asset name.
 - `frontend/src/lib/api.ts` — typed API client (one place for all endpoints).
 - `frontend/src/app/` — `WorkspaceHub`, `ProjectWorkspace` (left-rail nav: Board/Canon/Review/Lineage/Collections), `assets/AssetLibrary` + `AssetInspector` + `ReviewQueue` + `CommentThread` + `LineageView`, `canon/CanonView` + `canon/ContextAsk`, `collections/CollectionsView`, `export/ExportDialog`.
 
@@ -62,6 +63,6 @@ Open http://localhost:5173 → sign up → open a project.
 `ATLAS_PLAN.md`, `PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md` are intentionally untracked scratch/plan notes — ignore for handoff; the source of truth is `PLAN.md` + `ROADMAP.md`.
 
 ## Next up
-Open candidates (see [ROADMAP.md](ROADMAP.md)): **asset autoname** (deterministic display names from role+prompt); **2nd vertical** (manhwa/illustration/marketing — a "which one" decision); **engine adapters** (deferred until a 2nd vertical, will consume the export `groups[]`); **LLM answer-synthesis** on top of the "Ask this project" retrieval, and a **real text/CLIP embedder** for true semantic "feel" — both need a shared-key spend go-ahead.
+Open candidates (see [ROADMAP.md](ROADMAP.md)): **2nd vertical** (manhwa/illustration/marketing — a "which one" decision); **engine adapters** (deferred until a 2nd vertical, will consume the export `groups[]`); **LLM answer-synthesis** on top of the "Ask this project" retrieval, and a **real text/CLIP embedder** for true semantic "feel" — both need a shared-key spend go-ahead.
 
 > Migrations note: the embedding stores (`semantic_embeddings` 1024-d, `visual_embeddings` 768-d) ship from `0001` with placeholder dims; the mock embedder matches them. Reconcile dims when a real model is chosen.

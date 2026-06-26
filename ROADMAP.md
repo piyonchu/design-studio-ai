@@ -24,6 +24,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 5 · PR2 | Export — role/tag-grouped pack (vertical-neutral) | ✅ |
 | 3.5 PR2 | Semantic context RAG — "Ask this project" over briefs/prompts/comments/canon | ✅ (mock; retrieval-only) |
 | — | Smart versioning — auto canon change-notes (deterministic diff) + history | ✅ |
+| — | Asset naming — editable name + auto-derived display labels (drives export filename) | ✅ |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ (deferred — rule of three) |
 | — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
 
