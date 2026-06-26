@@ -26,6 +26,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 3.5 PR3 | LLM answer-synthesis over retrieval + disk cache (cheap real spend) | ✅ (google/gemini-2.5-flash; cached) |
 | — | Smart versioning — auto canon change-notes (deterministic diff) + history | ✅ |
 | — | Asset naming — editable name + auto-derived display labels (drives export filename) | ✅ |
+| — | **Exemplar loop** — approved assets condition future generation (moat closed) | ✅ |
 | 6 | 2nd vertical — **manhwa/webtoon** (config-only; proves core generalizes) | ✅ |
 | — | Extract a vertical-adapter framework now 2 verticals exist (rule of three met) | ⏳ next-eligible |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ |

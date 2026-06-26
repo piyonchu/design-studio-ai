@@ -45,6 +45,7 @@ Open http://localhost:5173 → sign up → open a project.
 - **Smart versioning** — each canon version gets an auto-generated deterministic "what changed" note (`canon.change_note`, mig 0008); `GET /canon/history` + a version-history list in the Canon tab. No LLM.
 - **Asset naming** — `assets.name` (mig 0009, editable in the inspector) with an auto-derived display label (`api.displayName`, role+prompt) used across board/lineage/review; the name drives the export filename.
 - **Audio** — `POST /projects/:id/audio` generates `kind='audio'` assets via `ai/audio.rs` (mock WAV synth; `AUDIO_MOCK=true` default, no hosted provider yet). The board has an image/audio toggle; clips play inline in the grid + inspector.
+- **Exemplar loop (the moat)** — approved assets can be flagged style exemplars (inspector toggle, ★ board badge; `assets.exemplar`, mig 0010). From-scratch generation then conditions on the latest approved exemplar (reference img2img) so new assets inherit the approved style; provenance in `metadata.exemplar_id`. Closes PLAN §6's "only approved assets influence future derivations".
 - **Verticals** — `frontend/src/app/verticals.ts` holds the only domain-specific config (derive presets + canon hints per vertical: `game_2d`, `manhwa`). Project create picks a vertical (`projects.vertical`); board derive-presets + canon fields adapt. Adding manhwa needed zero core changes — rule-of-three is met, so a vertical-adapter framework can now be extracted.
 - **Export** — pre-export checks (`POST /export/check`: filename, format/dimensions/alpha, issues) + a grouped zip pack (`POST /export`: `manifest.json` with `groups[]` by role/tag + `assets/<group>/<file>`, rejected/undecodable skipped). Triggered from a collection via the Export dialog. Vertical-neutral; engine-specific packers (Godot/Unity) are deferred per PLAN (rule of three) and will consume the grouped manifest.
 
@@ -52,7 +53,7 @@ Open http://localhost:5173 → sign up → open a project.
 - `backend/src/routes/` — `auth, workspaces, projects, canon, assets, audio, collections, comments, lineage, export, search, context`.
 - `backend/src/ai/images.rs` — generate + `derive_image` (img2img) + mock. `backend/src/ai/audio.rs` — audio generation (mock WAV synth) behind the same boundary.
 - `backend/src/storage.rs` — S3/MinIO (+ inline fallback). `backend/src/models.rs` — all DTOs/rows.
-- `backend/migrations/` — `0001` base, `0002` auth, `0003` canon+asset fields, `0004` drop dead UI tables, `0005` derivation (`asset_links`), `0006` collections, `0007` comments, `0008` canon change-note, `0009` asset name.
+- `backend/migrations/` — `0001` base, `0002` auth, `0003` canon+asset fields, `0004` drop dead UI tables, `0005` derivation (`asset_links`), `0006` collections, `0007` comments, `0008` canon change-note, `0009` asset name, `0010` exemplar flag.
 - `frontend/src/lib/api.ts` — typed API client (one place for all endpoints).
 - `frontend/src/app/` — `WorkspaceHub`, `ProjectWorkspace` (left-rail nav: Board/Canon/Review/Lineage/Collections), `assets/AssetLibrary` + `AssetInspector` + `ReviewQueue` + `CommentThread` + `LineageView`, `canon/CanonView` + `canon/ContextAsk`, `collections/CollectionsView`, `export/ExportDialog`.
 
