@@ -269,6 +269,10 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
         onChanged={(updated) =>
           setAssets((a) => a.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))
         }
+        onDeleted={(id) => {
+          setAssets((a) => a.filter((x) => x.id !== id))
+          if (baseId === id) setBaseId(null)
+        }}
       />
     </div>
   )

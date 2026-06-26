@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon } from '@phosphor-icons/react'
+import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 
@@ -13,17 +13,21 @@ export function AssetInspector({
   onClose,
   onNavigate,
   onChanged,
+  onDeleted,
 }: {
   assetId: string | null
   onClose: () => void
   onNavigate: (id: string) => void
   onChanged: (asset: api.Asset) => void
+  onDeleted: (id: string) => void
 }) {
   const [detail, setDetail] = useState<api.AssetDetail | null>(null)
   const [role, setRole] = useState('')
   const [tags, setTags] = useState('')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -32,6 +36,7 @@ export function AssetInspector({
     setDetail(null)
     setError(null)
     setSaved(false)
+    setConfirming(false)
     api
       .getAsset(assetId)
       .then((d) => {
@@ -65,6 +70,20 @@ export function AssetInspector({
       setError(e instanceof ApiError ? e.message : 'Save failed.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function remove() {
+    if (!detail || deleting) return
+    setDeleting(true)
+    setError(null)
+    try {
+      await api.deleteAsset(detail.id)
+      onDeleted(detail.id)
+      onClose()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Delete failed.')
+      setDeleting(false)
     }
   }
 
@@ -179,6 +198,32 @@ export function AssetInspector({
             {!detail.base && detail.derivatives.length === 0 && (
               <p className="mt-3 text-xs text-text-dim">No lineage yet — derive from this asset to grow it.</p>
             )}
+
+            <div className="mt-6 border-t border-white/8 pt-3">
+              {confirming ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={remove}
+                    disabled={deleting}
+                    className="inline-flex items-center gap-1.5 rounded-[8px] bg-rose-500/90 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-rose-500 disabled:opacity-50"
+                  >
+                    {deleting ? <SpinnerGapIcon size={14} className="animate-spin" /> : <TrashIcon size={14} />}
+                    Confirm delete
+                  </button>
+                  <button onClick={() => setConfirming(false)} className="text-xs text-text-dim hover:text-text">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirming(true)}
+                  className="inline-flex items-center gap-1.5 text-sm text-rose-300 transition hover:text-rose-200"
+                >
+                  <TrashIcon size={14} />
+                  Delete asset
+                </button>
+              )}
+            </div>
           </div>
         )}
       </aside>

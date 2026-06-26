@@ -166,6 +166,9 @@ export const updateAsset = (id: string, patch: { role?: string; tags?: string[] 
     body: JSON.stringify(patch),
   })
 
+/** Delete an asset (its lineage edges cascade). */
+export const deleteAsset = (id: string) => request<void>(`/assets/${id}`, { method: 'DELETE' })
+
 /** Upload a base/reference image. Raw bytes body, not multipart. */
 export const uploadAsset = async (
   projectId: string,
