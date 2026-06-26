@@ -7,6 +7,7 @@ import {
   TrayIcon,
   TreeStructureIcon,
   StackIcon,
+  ClockCounterClockwiseIcon,
 } from '@phosphor-icons/react'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
@@ -16,8 +17,9 @@ import { LineageView } from './assets/LineageView'
 import { CanonView } from './canon/CanonView'
 import { ContextAsk } from './canon/ContextAsk'
 import { CollectionsView } from './collections/CollectionsView'
+import { ActivityView } from './activity/ActivityView'
 
-type Tab = 'canon' | 'assets' | 'review' | 'lineage' | 'collections'
+type Tab = 'canon' | 'assets' | 'review' | 'lineage' | 'collections' | 'activity'
 
 const NAV: { id: Tab; label: string; icon: ComponentType<{ size?: number; weight?: 'fill' | 'regular' }> }[] = [
   { id: 'assets', label: 'Board', icon: SquaresFourIcon },
@@ -25,6 +27,7 @@ const NAV: { id: Tab; label: string; icon: ComponentType<{ size?: number; weight
   { id: 'review', label: 'Review', icon: TrayIcon },
   { id: 'lineage', label: 'Lineage', icon: TreeStructureIcon },
   { id: 'collections', label: 'Collections', icon: StackIcon },
+  { id: 'activity', label: 'Activity', icon: ClockCounterClockwiseIcon },
 ]
 
 /**
@@ -110,6 +113,8 @@ export function ProjectWorkspace() {
               <LineageView projectId={projectId} />
             ) : tab === 'collections' ? (
               <CollectionsView projectId={projectId} />
+            ) : tab === 'activity' ? (
+              <ActivityView projectId={projectId} />
             ) : (
               <AssetLibrary projectId={projectId} vertical={project?.vertical} />
             ))}

@@ -318,6 +318,17 @@ export const askContext = (projectId: string, q: string) =>
 export const backfillContext = (projectId: string) =>
   request<{ indexed: number }>(`/projects/${projectId}/context/backfill`, { method: 'POST' })
 
+// ── Activity feed ────────────────────────────────────────────────────────────
+export interface ActivityEvent {
+  kind: 'asset' | 'comment' | 'canon'
+  at: string
+  summary: string
+  asset_id: string | null
+}
+
+export const getActivity = (projectId: string) =>
+  request<ActivityEvent[]>(`/projects/${projectId}/activity`)
+
 // ── Generation recipes (reusable derivation templates) ──────────────────────
 export interface Recipe {
   id: string
