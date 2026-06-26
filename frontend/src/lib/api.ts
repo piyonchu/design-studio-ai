@@ -291,9 +291,14 @@ export interface ContextHit {
   score: number
 }
 
-/** Ask the project — retrieve relevant context snippets ("why was this made"). */
+export interface ContextAnswer {
+  answer: string // LLM-synthesized answer (or a mock/empty note)
+  sources: ContextHit[]
+}
+
+/** Ask the project — a synthesized answer over the most relevant context. */
 export const askContext = (projectId: string, q: string) =>
-  request<ContextHit[]>(`/projects/${projectId}/context?q=${encodeURIComponent(q)}`)
+  request<ContextAnswer>(`/projects/${projectId}/context?q=${encodeURIComponent(q)}`)
 
 /** (Re)build the semantic-context index from briefs/prompts/comments/canon. */
 export const backfillContext = (projectId: string) =>
