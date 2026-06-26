@@ -1,10 +1,11 @@
-use axum::body::Body;
-use axum::extract::{Path, State};
-use axum::http::{header, StatusCode};
+use axum::body::{Body, Bytes};
+use axum::extract::{Path, Query, State};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::ai;
@@ -16,12 +17,16 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/projects/:project_id/assets", get(list).post(generate))
+        .route("/projects/:project_id/assets/upload", post(upload))
         .route("/assets/:id/attach", post(attach))
         .route("/assets/:id/file", get(file))
 }
 
 const ASSET_COLS: &str =
-    "id, project_id, screen_id, kind, s3_key, mime_type, prompt, created_at";
+    "id, project_id, screen_id, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, created_at";
+
+/// 10 MB cap on a single uploaded asset.
+const MAX_UPLOAD: usize = 10 * 1024 * 1024;
 
 /// Fill in the browser-usable `url` for an asset. Object-stored assets are
 /// served through our authed proxy; inline assets carry the URL directly.
@@ -66,8 +71,8 @@ async fn generate(
         };
 
         let asset = sqlx::query_as::<_, Asset>(&format!(
-            "INSERT INTO assets (project_id, kind, s3_key, mime_type, prompt)
-             VALUES ($1, 'image', $2, $3, $4) RETURNING {ASSET_COLS}"
+            "INSERT INTO assets (project_id, kind, s3_key, mime_type, prompt, source_kind)
+             VALUES ($1, 'image', $2, $3, $4, 'seeded') RETURNING {ASSET_COLS}"
         ))
         .bind(project_id)
         .bind(&s3_key)
@@ -78,6 +83,60 @@ async fn generate(
         assets.push(with_url(asset));
     }
     Ok((StatusCode::CREATED, Json(assets)))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UploadParams {
+    /// Optional free-text role, e.g. "base", "reference".
+    #[serde(default)]
+    role: Option<String>,
+}
+
+/// Bring a base/reference asset in by uploading raw image bytes (body = the
+/// file, `Content-Type` = its mime). Stored in object storage when configured,
+/// else inline as a data URL. `source_kind='uploaded'`.
+async fn upload(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(project_id): Path<Uuid>,
+    Query(params): Query<UploadParams>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(StatusCode, Json<Asset>), AppError> {
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
+    if body.is_empty() {
+        return Err(AppError::BadRequest("empty upload".into()));
+    }
+    if body.len() > MAX_UPLOAD {
+        return Err(AppError::BadRequest("file too large (max 10MB)".into()));
+    }
+    let mime = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .filter(|m| m.starts_with("image/"))
+        .unwrap_or("image/png")
+        .to_string();
+
+    let s3_key = if state.storage.configured() {
+        let key = format!("projects/{project_id}/assets/{}", Uuid::new_v4());
+        state.storage.put(&key, &body, &mime).await?;
+        key
+    } else {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&body);
+        format!("data:{mime};base64,{b64}")
+    };
+
+    let asset = sqlx::query_as::<_, Asset>(&format!(
+        "INSERT INTO assets (project_id, kind, s3_key, mime_type, role, source_kind)
+         VALUES ($1, 'image', $2, $3, $4, 'uploaded') RETURNING {ASSET_COLS}"
+    ))
+    .bind(project_id)
+    .bind(&s3_key)
+    .bind(&mime)
+    .bind(&params.role)
+    .fetch_one(&state.pool)
+    .await?;
+    Ok((StatusCode::CREATED, Json(with_url(asset))))
 }
 
 async fn list(

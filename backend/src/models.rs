@@ -62,6 +62,18 @@ pub enum AssetKind {
     Svg,
 }
 
+/// Review lifecycle: everything starts `Candidate`; only `Approved` enters the
+/// canon and influences future derivations.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "asset_status", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum AssetStatus {
+    Candidate,
+    Approved,
+    Rejected,
+    NeedsReview,
+}
+
 impl Default for LinkRelation {
     fn default() -> Self {
         LinkRelation::DerivedFrom
@@ -236,6 +248,11 @@ pub struct Asset {
     pub s3_key: String,
     pub mime_type: Option<String>,
     pub prompt: Option<String>,
+    pub role: Option<String>,
+    pub status: AssetStatus,
+    pub tags: Vec<String>,
+    /// How the asset entered the library: 'uploaded' | 'seeded' | 'derived'.
+    pub source_kind: String,
     pub created_at: DateTime<Utc>,
     /// Stable, browser-usable URL for the image. Not stored — filled in by the
     /// route after fetching (see `routes::assets`). For object-stored assets
