@@ -29,6 +29,9 @@ async fn enqueue(
     if body.prompt.trim().is_empty() {
         return Err(AppError::BadRequest("prompt is required".into()));
     }
+    // Reject disallowed prompts at enqueue for immediate feedback (the worker's
+    // run_generate re-checks, so the gate holds regardless of entry point).
+    crate::moderation::check_prompt(&body.prompt)?;
     let payload = json!({
         "prompt": body.prompt,
         "count": body.count.unwrap_or(1).clamp(1, 4),

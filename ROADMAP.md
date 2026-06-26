@@ -70,10 +70,10 @@ all decision/spend-gated — confirm before starting:
   `.import` + drop-in `project.godot`. Unity pack: textures + `.meta` (Sprite +
   stable GUID), copy into `Assets/`. Unity's `.meta` is format-validated, not
   editor-tested (licensed editor). Next engine = one `Engine` variant + a packer.
-- **Commercialization** — usage credit ✅, **async generation queue ✅**
-  (DB-backed `jobs` + in-process worker + status polling + board banner).
-  Remaining: production hardening (CORS allowlist, prompt denylist moderation,
-  security headers, dev-token password-reset). Decisions captured 2026-06-27.
+- **Commercialization** — usage credit ✅, async generation queue ✅,
+  **production hardening ✅** (env CORS allowlist, security headers, prompt
+  content denylist). Remaining: dev-token password-reset / email-verify (its own
+  auth feature + migration — deferred). Decisions captured 2026-06-27.
 - **Animation** (frame sequences) — own spike, real-model spend.
 - **Pixel-CLIP visual embedder** — swaps behind `embed_text`; shared-key spend.
 - **Commercialization track** — async gen queue, billing/quotas, deploy,

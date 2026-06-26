@@ -75,6 +75,7 @@ pub(crate) async fn run_generate(
     raw_prompt: &str,
     count: u32,
 ) -> Result<Vec<Asset>, AppError> {
+    crate::moderation::check_prompt(raw_prompt)?;
     let count = count.clamp(1, 4);
 
     // Seed against the current canon so generated bases follow the project's
