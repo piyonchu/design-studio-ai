@@ -8,6 +8,7 @@ mod context;
 mod export;
 mod lineage;
 mod projects;
+mod recipes;
 mod search;
 mod workspaces;
 
@@ -31,4 +32,5 @@ pub fn router() -> Router<AppState> {
         .merge(export::router())
         .merge(search::router())
         .merge(context::router())
+        .merge(recipes::router())
 }

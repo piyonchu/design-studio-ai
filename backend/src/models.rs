@@ -244,6 +244,23 @@ pub struct AddItems {
     pub asset_ids: Vec<Uuid>,
 }
 
+// ── Generation recipes (reusable derivation templates) ───────────────────────
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct Recipe {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub instruction: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateRecipe {
+    pub name: String,
+    pub instruction: String,
+}
+
 // ── Comments (collaboration) ─────────────────────────────────────────────────
 
 /// A comment on an asset, with the author's email joined for display. The
