@@ -15,21 +15,27 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 2 | Reference-driven derivation (img2img) + canon-bound prompts + review gate | ✅ |
 | 3 · PR1 | Asset inspector + lineage strip + delete | ✅ |
 | 3 · PR2 | Collections (packs) + env-bool fix | ✅ |
-| **3 · PR3** | **Smart asset board** | 🚧 next |
-| 3 · PR4 | Collaboration + review queue | ⏳ |
+| 3 · PR3 | Smart asset board (filters · search · status language · batch) | ✅ |
+| **3 · PR4** | **Collaboration + review queue** | 🚧 next |
 | 3 · PR5 | Lineage graph + canon-change propagation | ⏳ |
 | 3.5 | Visual intelligence (embeddings/dedup/similar) — **spike-gated** | ⏳ |
 | 4 | (per PLAN) deeper RAG / asset intelligence | ⏳ |
 | 5 | Export — Godot pack first, then Unity | ⏳ |
 | — | Nav shell (left rail + slide-overs, replace tabs) | ⏳ |
 
-## Next: Phase 3 PR3 — Smart asset board
-Make the board manageable (no ML — that's 3.5):
-- **Filters** — role · status · source_kind · collection.
-- **Search** — name / tags / prompt (client-side or simple SQL).
-- **Status as visual language** — candidate = dashed amber · approved = solid · needs_review = pulsing flag.
-- **Multi-select** → batch approve / add-to-collection.
-- Defer dedup ("2 similar") to Phase 3.5.
+## Next: Phase 3 PR4 — Collaboration + review queue
+Surface the team/review layer the backend already has (roles/teams exist):
+- **Review queue** — candidates awaiting approval as a focused worklist.
+- **Comments** (`asset_comments` table) + a lightweight activity feed.
+- Roles/teams are already in the backend — just surface them in the UI.
+
+### Done — Phase 3 PR3 (smart asset board)
+Client-side over existing endpoints, no backend changes:
+- **Filters** — status · role · source_kind · collection (counts + lazy collection membership).
+- **Search** — role / prompt / derivation / kind / tags.
+- **Status as visual language** — candidate = amber ring · approved = solid teal · needs_review = rose + pulsing flag · rejected = dimmed.
+- **Multi-select** → batch approve / reject / add-to-collection.
+- Dedup ("2 similar") deferred to Phase 3.5.
 
 ## Phase 3 — remaining detail
 - **PR4 Collaboration** — review queue (candidates awaiting approval) + comments (`asset_comments` table) + activity feed; roles/teams already exist in the backend, just surface them.

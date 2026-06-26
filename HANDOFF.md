@@ -28,13 +28,14 @@ Open http://localhost:5173 → sign up → open a project.
 - `ASSET_MOCK=false` + `OPENROUTER_API_KEY=...` → real images (≈$0.04/image).
 - The shared OpenRouter key is **not** in git (`.env` is gitignored) — get it from the team. (~$8.78 left at handoff.)
 
-## What's built (Phase 0–3 PR2)
+## What's built (Phase 0–3 PR3)
 - **Auth** — email+password, httpOnly session cookie, workspace roles.
 - **Projects** (`vertical='game_2d'`) + **Canon** — versioned style rules (Canon tab). Canon feeds both generate + derive prompts.
 - **Assets** — generate (text→image), upload base, **derive** (img2img, base sent as reference) with presets (walk/action/variant/matching). Each derivative records `derived_from` + canon version.
 - **Review** — approve/reject/needs_review on tiles.
 - **Inspector** (slide-over) — preview, edit role/tags, lineage strip (base ↔ derivatives), delete, add-to-collection.
 - **Collections** — packs (Collections tab): create, open, remove, delete; add via inspector.
+- **Smart board** — filter rail (status / role / source / collection), search, status visual language, multi-select batch (approve / reject / add-to-collection). All client-side over existing endpoints.
 
 ## Code map
 - `backend/src/routes/` — `auth, workspaces, projects, canon, assets, collections`.
@@ -53,4 +54,4 @@ Open http://localhost:5173 → sign up → open a project.
 `ATLAS_PLAN.md`, `PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md` are intentionally untracked scratch/plan notes — ignore for handoff; the source of truth is `PLAN.md` + `ROADMAP.md`.
 
 ## Next up
-Phase 3 PR3 — smart asset board (filters: role/status/source/collection + search; status visual language; multi-select → batch approve / add-to-collection). See [ROADMAP.md](ROADMAP.md).
+Phase 3 PR4 — collaboration + review queue (candidates-awaiting-approval worklist; `asset_comments` + activity feed; surface the existing roles/teams). See [ROADMAP.md](ROADMAP.md).
