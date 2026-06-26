@@ -393,6 +393,31 @@ export const reconcileAssets = (projectId: string, assetIds: string[]) =>
     body: JSON.stringify({ asset_ids: assetIds }),
   })
 
+// ── Async jobs ───────────────────────────────────────────────────────────────
+export interface Job {
+  id: string
+  project_id: string
+  kind: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed'
+  payload: Record<string, unknown>
+  result: { asset_ids?: string[] } | null
+  error: string | null
+  attempts: number
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+/** Enqueue an async generation; returns the queued job to poll. */
+export const enqueueGenerate = (projectId: string, prompt: string, count = 2) =>
+  request<Job>(`/projects/${projectId}/jobs`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt, count }),
+  })
+/** Recent jobs for a project (newest first). */
+export const listJobs = (projectId: string) => request<Job[]>(`/projects/${projectId}/jobs`)
+/** One job's current status (for polling). */
+export const getJob = (jobId: string) => request<Job>(`/jobs/${jobId}`)
+
 // ── Usage (shared OpenRouter key budget) ─────────────────────────────────────
 export interface Usage {
   remaining: number

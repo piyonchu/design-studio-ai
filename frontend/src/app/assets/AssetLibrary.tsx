@@ -20,6 +20,7 @@ import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { AssetInspector } from './AssetInspector'
 import { ExportDialog } from '../export/ExportDialog'
+import { JobsBanner } from './JobsBanner'
 import { verticalConfig } from '../verticals'
 
 const STATUSES: api.AssetStatus[] = ['candidate', 'approved', 'needs_review', 'rejected']
@@ -199,6 +200,27 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     )
   }
 
+  // Poll a generation job to completion (non-blocking), then refresh the board.
+  async function watchJob(jobId: string) {
+    for (let i = 0; i < 80; i++) {
+      let job: api.Job
+      try {
+        job = await api.getJob(jobId)
+      } catch {
+        return
+      }
+      if (job.status === 'succeeded') {
+        api.listAssets(projectId).then(setAssets).catch(() => {})
+        return
+      }
+      if (job.status === 'failed') {
+        setError(job.error || 'Generation failed.')
+        return
+      }
+      await new Promise((r) => setTimeout(r, 700))
+    }
+  }
+
   async function generate(e: FormEvent) {
     e.preventDefault()
     const p = prompt.trim()
@@ -206,11 +228,16 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     setBusy(true)
     setError(null)
     try {
-      const created =
-        genMode === 'audio'
-          ? await api.generateAudio(projectId, p, 2)
-          : await api.generateAssets(projectId, p, 2)
-      setAssets((a) => [...created, ...a])
+      if (genMode === 'audio') {
+        // Audio stays synchronous (no async job kind yet).
+        const created = await api.generateAudio(projectId, p, 2)
+        setAssets((a) => [...created, ...a])
+      } else {
+        // Image generation runs as a background job: enqueue, then watch it
+        // finish and refresh the board (the JobsBanner shows progress).
+        const job = await api.enqueueGenerate(projectId, p, 2)
+        watchJob(job.id)
+      }
       setPrompt('')
       setDupHits([])
     } catch (err) {
@@ -687,6 +714,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
         )}
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          <JobsBanner projectId={projectId} />
           {assets.length === 0 ? (
             <p className="px-1 py-16 text-center text-sm text-text-dim">
               No assets yet. Generate one above, or upload a base.
