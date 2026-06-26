@@ -7,6 +7,7 @@ mod ratelimit;
 mod routes;
 mod storage;
 mod turnstile;
+mod verticals;
 
 use std::net::SocketAddr;
 use std::sync::Arc;

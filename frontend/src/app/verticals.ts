@@ -3,7 +3,7 @@
 // preset + canon-hint set here. This is the rule-of-three proof: adding manhwa
 // required no core changes. Extract an adapter framework once there are 2–3.
 
-export type Vertical = 'game_2d' | 'manhwa'
+export type Vertical = 'game_2d' | 'manhwa' | 'illustration'
 
 export interface DerivePreset {
   id: string
@@ -52,6 +52,22 @@ export const VERTICALS: Record<Vertical, VerticalConfig> = {
       ['character', 'Character notes', 'lead: silver hair, red eyes, school uniform'],
       ['background', 'Background style', 'soft-focus painterly interiors'],
       ['composition', 'Composition', 'vertical-scroll panel, character centered, transparent bg'],
+    ],
+  },
+  illustration: {
+    label: 'Illustration',
+    derivePresets: [
+      { id: 'colorway', label: 'Colorway', text: 'The SAME subject in an alternate color palette. Keep identical shapes, linework, and composition.' },
+      { id: 'linework', label: 'Linework', text: 'A clean linework / inked version of the SAME subject. Keep identical proportions and composition.' },
+      { id: 'sticker', label: 'Sticker', text: 'A die-cut sticker version of the SAME subject with a bold clean outline. Keep identical identity and palette.' },
+      { id: 'seriesmate', label: 'Series mate', text: 'A new subject in the EXACT same illustration style, palette, and linework — a cohesive series member.' },
+    ],
+    canonFields: [
+      ['medium', 'Medium', 'flat vector illustration, gouache texture'],
+      ['palette', 'Palette', 'muted retro pastels, ~8 colors'],
+      ['linework', 'Linework', 'bold even outlines, rounded corners'],
+      ['lighting', 'Lighting', 'soft top-left light, gentle long shadows'],
+      ['composition', 'Composition', 'single subject, generous padding, transparent bg'],
     ],
   },
 }

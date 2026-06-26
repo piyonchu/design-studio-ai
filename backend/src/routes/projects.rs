@@ -27,6 +27,14 @@ async fn create(
     // Must be at least an editor in the target workspace (404 if not a member).
     auth::require_member(&state.pool, workspace_id, user.id, WorkspaceRole::Editor).await?;
 
+    // The vertical (if given) must be a registered pack — the registry is the
+    // authority. Omitted → defaults to game_2d via COALESCE below.
+    if let Some(v) = &body.vertical {
+        if !crate::verticals::is_known(v) {
+            return Err(AppError::BadRequest(format!("unknown vertical '{v}'")));
+        }
+    }
+
     let project = sqlx::query_as::<_, Project>(
         "INSERT INTO projects (workspace_id, name, brief, vertical)
          VALUES ($1, $2, $3, COALESCE($4, 'game_2d'))

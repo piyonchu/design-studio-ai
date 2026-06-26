@@ -66,10 +66,12 @@ async fn generate(
     .bind(project_id)
     .fetch_optional(&state.pool)
     .await?;
-    let (canon_id, prompt) = match &canon {
-        Some((id, data)) => (Some(*id), compile_prompt(&body.prompt, data)),
-        None => (None, body.prompt.clone()),
-    };
+    let vertical: String = sqlx::query_scalar("SELECT vertical FROM projects WHERE id = $1")
+        .bind(project_id)
+        .fetch_one(&state.pool)
+        .await?;
+    let canon_id = canon.as_ref().map(|(id, _)| *id);
+    let prompt = compile_prompt(&body.prompt, canon.as_ref().map(|(_, d)| d), &vertical);
 
     // The moat loop: if the project has an approved style exemplar, condition
     // generation on it (reference img2img) so new assets inherit the approved
@@ -238,10 +240,12 @@ async fn derive(
     .bind(project_id)
     .fetch_optional(&state.pool)
     .await?;
-    let (canon_id, prompt) = match canon {
-        Some((id, data)) => (Some(id), compile_prompt(instruction, &data)),
-        None => (None, instruction.to_string()),
-    };
+    let vertical: String = sqlx::query_scalar("SELECT vertical FROM projects WHERE id = $1")
+        .bind(project_id)
+        .fetch_one(&state.pool)
+        .await?;
+    let canon_id = canon.as_ref().map(|(id, _)| *id);
+    let prompt = compile_prompt(instruction, canon.as_ref().map(|(_, d)| d), &vertical);
 
     let mut out = Vec::with_capacity(count as usize);
     for n in 0..count as usize {
@@ -421,10 +425,12 @@ pub(crate) async fn asset_bytes(
     }
 }
 
-/// Build a derivation prompt: instruction + the canon's style rules + negatives.
-fn compile_prompt(instruction: &str, canon: &Value) -> String {
+/// Build a derivation/generation prompt: instruction + the canon's style rules
+/// + the vertical's framing hint + negatives. `canon` is optional so the
+/// vertical framing still applies before a project has defined its canon.
+fn compile_prompt(instruction: &str, canon: Option<&Value>, vertical: &str) -> String {
     let style = canon
-        .get("style")
+        .and_then(|c| c.get("style"))
         .and_then(Value::as_object)
         .map(|o| {
             o.values()
@@ -435,7 +441,7 @@ fn compile_prompt(instruction: &str, canon: &Value) -> String {
         })
         .unwrap_or_default();
     let negative = canon
-        .get("negative")
+        .and_then(|c| c.get("negative"))
         .and_then(Value::as_array)
         .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("; "))
         .unwrap_or_default();
@@ -444,11 +450,30 @@ fn compile_prompt(instruction: &str, canon: &Value) -> String {
     if !style.is_empty() {
         p.push_str(&format!(" Maintain this exact art style: {style}."));
     }
-    p.push_str(" One centered isolated asset, transparent background.");
+    p.push_str(&format!(" {}", crate::verticals::get(vertical).render_hint));
     if !negative.is_empty() {
         p.push_str(&format!(" Must NOT include: {negative}."));
     }
     p
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compile_prompt;
+
+    #[test]
+    fn vertical_render_hint_is_applied() {
+        let game = compile_prompt("draw a sword", None, "game_2d");
+        assert!(game.contains("One centered isolated asset, transparent background."));
+
+        let manhwa = compile_prompt("draw a sword", None, "manhwa");
+        assert!(manhwa.contains("webtoon panel-ready"));
+        assert!(!manhwa.contains("One centered isolated asset"));
+
+        // Unknown vertical falls back to the default (game_2d) hint.
+        let unknown = compile_prompt("draw a sword", None, "bogus");
+        assert!(unknown.contains("One centered isolated asset, transparent background."));
+    }
 }
 
 /// Stream an asset's image bytes. Stable, same-origin URL safe to embed in a

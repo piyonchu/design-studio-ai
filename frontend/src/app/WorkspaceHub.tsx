@@ -4,6 +4,7 @@ import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
 import { AppShell } from './AppShell'
 import { ProjectCard } from './ProjectCard'
+import { VERTICALS } from './verticals'
 
 export function WorkspaceHub() {
   const [workspace, setWorkspace] = useState<api.Workspace | null>(null)
@@ -92,8 +93,11 @@ export function WorkspaceHub() {
               title="Vertical — drives derive presets + canon hints"
               className="rounded-[8px] bg-surface-2/60 px-2.5 py-2 text-sm text-text outline-none focus:ring-2 focus:ring-teal/30"
             >
-              <option value="game_2d">Game (2D)</option>
-              <option value="manhwa">Manhwa / Webtoon</option>
+              {Object.entries(VERTICALS).map(([key, cfg]) => (
+                <option key={key} value={key}>
+                  {cfg.label}
+                </option>
+              ))}
             </select>
             <button
               type="submit"
