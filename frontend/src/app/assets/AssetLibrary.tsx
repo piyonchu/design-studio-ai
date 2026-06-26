@@ -259,6 +259,27 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     }
   }
 
+  // "Make the other 200": derive one of every preset from the base in a single
+  // action — a whole consistent set (walk/action/variant/... or manhwa's
+  // expression/pose/...). Each is its own gen; we collect what succeeds.
+  async function deriveAll() {
+    if (!baseId || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      for (const p of PRESETS) {
+        try {
+          const created = await api.deriveAssets(projectId, baseId, p.text, 1)
+          setAssets((a) => [...created, ...a])
+        } catch (err) {
+          genError(err)
+        }
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function review(id: string, status: api.AssetStatus) {
     try {
       const updated = await api.setAssetStatus(id, status)
@@ -522,7 +543,16 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
             <div className="mx-auto max-w-2xl">
               <div className="mb-2 flex items-center gap-2 text-xs text-text-dim">
                 <span>Deriving from selected base — pick a preset or write an instruction</span>
-                <button onClick={() => setBaseId(null)} className="ml-auto text-text-dim hover:text-text">
+                <button
+                  onClick={deriveAll}
+                  disabled={busy}
+                  title="Derive one of every preset — a whole consistent set"
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] border border-teal/30 bg-teal/10 px-2.5 py-1 text-teal-bright transition hover:bg-teal/15 disabled:opacity-50"
+                >
+                  {busy ? <SpinnerGapIcon size={12} className="animate-spin" /> : <SparkleIcon size={12} weight="fill" />}
+                  Derive all {PRESETS.length}
+                </button>
+                <button onClick={() => setBaseId(null)} className="text-text-dim hover:text-text">
                   Clear
                 </button>
               </div>
