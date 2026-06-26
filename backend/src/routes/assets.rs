@@ -20,7 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/projects/:project_id/assets", get(list).post(generate))
         .route("/projects/:project_id/assets/upload", post(upload))
         .route("/projects/:project_id/assets/:base_id/derive", post(derive))
-        .route("/assets/:id", get(get_one).patch(update_asset))
+        .route("/assets/:id", get(get_one).patch(update_asset).delete(delete_one))
         .route("/assets/:id/file", get(file))
 }
 
@@ -322,6 +322,33 @@ async fn update_asset(
     .fetch_one(&state.pool)
     .await?;
     Ok(Json(with_url(asset)))
+}
+
+/// Delete an asset. `asset_links` rows CASCADE; the stored object is cleaned up
+/// best-effort (a leftover object is harmless, a failed delete shouldn't 500).
+async fn delete_one(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let row: Option<(Uuid, String)> =
+        sqlx::query_as("SELECT project_id, s3_key FROM assets WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let (project_id, s3_key) = row.ok_or(AppError::NotFound)?;
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
+
+    sqlx::query("DELETE FROM assets WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    if !is_inline(&s3_key) {
+        if let Err(e) = state.storage.delete(&s3_key).await {
+            tracing::warn!(error = %e, key = %s3_key, "asset deleted but object cleanup failed");
+        }
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Load an asset's raw bytes to use as a derivation reference: object storage by
