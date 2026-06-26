@@ -353,7 +353,7 @@ async fn delete_one(
 
 /// Load an asset's raw bytes to use as a derivation reference: object storage by
 /// key, or an inline `data:` URL decoded in place.
-async fn asset_bytes(
+pub(crate) async fn asset_bytes(
     state: &AppState,
     s3_key: &str,
     mime: Option<&str>,

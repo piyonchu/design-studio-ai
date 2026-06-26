@@ -3,6 +3,7 @@ mod auth;
 mod canon;
 mod collections;
 mod comments;
+mod export;
 mod lineage;
 mod projects;
 mod workspaces;
@@ -23,4 +24,5 @@ pub fn router() -> Router<AppState> {
         .merge(collections::router())
         .merge(comments::router())
         .merge(lineage::router())
+        .merge(export::router())
 }

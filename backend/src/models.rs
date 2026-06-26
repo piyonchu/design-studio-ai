@@ -29,7 +29,7 @@ pub enum AssetKind {
 
 /// Review lifecycle: everything starts `Candidate`; only `Approved` enters the
 /// canon and influences future derivations.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "asset_status", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum AssetStatus {
@@ -269,4 +269,35 @@ pub struct LineageGraph {
 #[derive(Debug, Deserialize)]
 pub struct ReconcileRequest {
     pub asset_ids: Vec<Uuid>,
+}
+
+// ── Export ───────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct ExportRequest {
+    pub asset_ids: Vec<Uuid>,
+}
+
+/// One asset's pre-export verdict: the filename it would get in the pack, its
+/// decoded raster facts, and any issues a deterministic check surfaced.
+#[derive(Debug, Serialize)]
+pub struct AssetCheck {
+    pub id: Uuid,
+    pub filename: String,
+    pub role: Option<String>,
+    pub status: AssetStatus,
+    pub format: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub has_alpha: Option<bool>,
+    pub issues: Vec<String>,
+    /// True when nothing blocking was found (issues may still carry warnings).
+    pub ok: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportReport {
+    pub assets: Vec<AssetCheck>,
+    pub ok_count: usize,
+    pub issue_count: usize,
 }
