@@ -16,18 +16,26 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 3 · PR1 | Asset inspector + lineage strip + delete | ✅ |
 | 3 · PR2 | Collections (packs) + env-bool fix | ✅ |
 | 3 · PR3 | Smart asset board (filters · search · status language · batch) | ✅ |
-| **3 · PR4** | **Collaboration + review queue** | 🚧 next |
-| 3 · PR5 | Lineage graph + canon-change propagation | ⏳ |
+| 3 · PR4 | Collaboration: review queue + comment threads | ✅ |
+| **3 · PR5** | **Lineage graph + canon-change propagation** | 🚧 next |
 | 3.5 | Visual intelligence (embeddings/dedup/similar) — **spike-gated** | ⏳ |
 | 4 | (per PLAN) deeper RAG / asset intelligence | ⏳ |
 | 5 | Export — Godot pack first, then Unity | ⏳ |
 | — | Nav shell (left rail + slide-overs, replace tabs) | ⏳ |
 
-## Next: Phase 3 PR4 — Collaboration + review queue
-Surface the team/review layer the backend already has (roles/teams exist):
-- **Review queue** — candidates awaiting approval as a focused worklist.
-- **Comments** (`asset_comments` table) + a lightweight activity feed.
-- Roles/teams are already in the backend — just surface them in the UI.
+## Next: Phase 3 PR5 — Lineage graph + canon-change propagation
+The moat made visible:
+- **Lineage graph** — canon version → assets → variants, navigable.
+- **Canon-change propagation** — when a base/canon changes, use `canon_version_id`
+  to surface stale assets and offer a "regenerate or keep" batch.
+
+### Done — Phase 3 PR4 (collaboration)
+- **Review queue** — a "Review" tab: candidate + needs-review backlog as a
+  worklist; focused candidate shows preview + approve / needs-review / reject
+  with its discussion side-by-side, decision advances to the next.
+- **Comment threads** (`asset_comments`, migration 0007) — per-asset discussion
+  in both the inspector and the queue; author + relative time, delete-own
+  (Owner can moderate). Activity feed deferred (no events table yet).
 
 ### Done — Phase 3 PR3 (smart asset board)
 Client-side over existing endpoints, no backend changes:
@@ -38,7 +46,6 @@ Client-side over existing endpoints, no backend changes:
 - Dedup ("2 similar") deferred to Phase 3.5.
 
 ## Phase 3 — remaining detail
-- **PR4 Collaboration** — review queue (candidates awaiting approval) + comments (`asset_comments` table) + activity feed; roles/teams already exist in the backend, just surface them.
 - **PR5 Lineage graph** — canon version → assets → variants graph; "regenerate or keep" batch when a base/canon changes (uses `canon_version_id` to find stale assets). The moat made visible.
 
 ## Phase 3.5 — Visual intelligence (gate before building)
