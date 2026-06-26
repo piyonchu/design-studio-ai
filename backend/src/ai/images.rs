@@ -62,23 +62,56 @@ fn seed(prompt: &str, n: usize) -> u64 {
     h
 }
 
-/// Generate one image for `prompt` (variant `n`) as bytes + MIME.
+/// Generate one image for `prompt` (variant `n`) from text alone.
 pub async fn generate_image(prompt: &str, n: usize) -> Result<GeneratedImage, AppError> {
     if asset_mock() {
-        return Ok(GeneratedImage {
-            bytes: mock_svg(prompt, n).into_bytes(),
-            mime: "image/svg+xml".to_string(),
-        });
+        return Ok(mock_image(prompt, n));
     }
-    let key = api_key().ok_or_else(|| {
+    call_openrouter(&require_key()?, json!(prompt)).await
+}
+
+/// Derive one image conditioned on a `base` image (img2img): the base is sent
+/// as a reference alongside the instruction, so identity + style carry over.
+/// This is the load-bearing mechanism for consistent derivatives (see the spike).
+pub async fn derive_image(
+    base: &[u8],
+    base_mime: &str,
+    prompt: &str,
+    n: usize,
+) -> Result<GeneratedImage, AppError> {
+    if asset_mock() {
+        return Ok(mock_image(prompt, n));
+    }
+    let b64 = base64::engine::general_purpose::STANDARD.encode(base);
+    let content = json!([
+        { "type": "text", "text": prompt },
+        { "type": "image_url", "image_url": { "url": format!("data:{base_mime};base64,{b64}") } },
+    ]);
+    call_openrouter(&require_key()?, content).await
+}
+
+fn mock_image(prompt: &str, n: usize) -> GeneratedImage {
+    GeneratedImage {
+        bytes: mock_svg(prompt, n).into_bytes(),
+        mime: "image/svg+xml".to_string(),
+    }
+}
+
+fn require_key() -> Result<String, AppError> {
+    api_key().ok_or_else(|| {
         AppError::ServiceUnavailable(
             "Image generation not configured: set OPENROUTER_API_KEY, or ASSET_MOCK=true".into(),
         )
-    })?;
+    })
+}
 
+/// POST one chat-completions image request. `content` is a string (text→image)
+/// or an array carrying a reference image (img2img). Retries transient failures,
+/// then resolves the returned reference into bytes.
+async fn call_openrouter(key: &str, content: Value) -> Result<GeneratedImage, AppError> {
     let body = json!({
         "model": model(),
-        "messages": [{ "role": "user", "content": prompt }],
+        "messages": [{ "role": "user", "content": content }],
         "modalities": ["image", "text"],
     });
 
