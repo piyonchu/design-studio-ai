@@ -18,15 +18,7 @@ import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { AssetInspector } from './AssetInspector'
 import { ExportDialog } from '../export/ExportDialog'
-
-// Spike-proven generative derivations (recolor stays out — it drifts identity
-// generatively; it belongs on the deterministic path).
-const PRESETS = [
-  { id: 'walk', label: 'Walk', text: 'Show the SAME character in a mid-walk side stride pose. Keep identical identity, palette, and proportions.' },
-  { id: 'action', label: 'Action', text: 'Show the SAME character in a dynamic action pose. Keep identical identity, palette, and proportions.' },
-  { id: 'variant', label: 'Variant', text: 'An outfit/expression variant of the SAME character. Keep identical shape and proportions.' },
-  { id: 'matching', label: 'Matching', text: 'A matching set member in the EXACT same art style, palette, and outline weight. Different subject, same world.' },
-]
+import { verticalConfig } from '../verticals'
 
 const STATUSES: api.AssetStatus[] = ['candidate', 'approved', 'needs_review', 'rejected']
 
@@ -51,7 +43,8 @@ const STATUS_DOT: Record<api.AssetStatus, string> = {
  * language, and multi-select batch actions (approve / add-to-collection).
  * Click a tile to pick a derivation base; toggle Select for batch mode.
  */
-export function AssetLibrary({ projectId }: { projectId: string }) {
+export function AssetLibrary({ projectId, vertical }: { projectId: string; vertical?: string }) {
+  const PRESETS = verticalConfig(vertical).derivePresets
   const [assets, setAssets] = useState<api.Asset[]>([])
   const [collections, setCollections] = useState<api.CollectionSummary[]>([])
   const [prompt, setPrompt] = useState('')

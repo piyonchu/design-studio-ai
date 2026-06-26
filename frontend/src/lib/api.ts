@@ -44,6 +44,7 @@ export interface Project {
   workspace_id: string
   name: string
   brief: string | null
+  vertical: string // 'game_2d' | 'manhwa'
   created_at: string
 }
 
@@ -70,10 +71,15 @@ export const listWorkspaces = () => request<Workspace[]>('/workspaces')
 export const listProjects = (workspaceId: string) =>
   request<Project[]>(`/workspaces/${workspaceId}/projects`)
 
-export const createProject = (workspaceId: string, name: string, brief?: string) =>
+export const createProject = (
+  workspaceId: string,
+  name: string,
+  brief?: string,
+  vertical?: string,
+) =>
   request<Project>(`/workspaces/${workspaceId}/projects`, {
     method: 'POST',
-    body: JSON.stringify({ name, brief }),
+    body: JSON.stringify({ name, brief, vertical }),
   })
 
 export const getProject = (id: string) => request<Project>(`/projects/${id}`)

@@ -13,6 +13,7 @@ export function WorkspaceHub() {
   const [search, setSearch] = useState('')
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [newVertical, setNewVertical] = useState('game_2d')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -45,7 +46,7 @@ export function WorkspaceHub() {
     if (!workspace || !newName.trim()) return
     setBusy(true)
     try {
-      const created = await api.createProject(workspace.id, newName.trim())
+      const created = await api.createProject(workspace.id, newName.trim(), undefined, newVertical)
       setProjects((prev) => [created, ...prev])
       setNewName('')
       setCreating(false)
@@ -85,6 +86,15 @@ export function WorkspaceHub() {
               placeholder="Project name"
               className="flex-1 rounded-[8px] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-2 focus:ring-teal/30"
             />
+            <select
+              value={newVertical}
+              onChange={(e) => setNewVertical(e.target.value)}
+              title="Vertical — drives derive presets + canon hints"
+              className="rounded-[8px] bg-surface-2/60 px-2.5 py-2 text-sm text-text outline-none focus:ring-2 focus:ring-teal/30"
+            >
+              <option value="game_2d">Game (2D)</option>
+              <option value="manhwa">Manhwa / Webtoon</option>
+            </select>
             <button
               type="submit"
               disabled={busy || !newName.trim()}

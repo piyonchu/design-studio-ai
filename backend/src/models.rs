@@ -54,6 +54,8 @@ pub struct Project {
     pub workspace_id: Uuid,
     pub name: String,
     pub brief: Option<String>,
+    /// Which vertical pack drives presets/canon hints: 'game_2d' | 'manhwa'.
+    pub vertical: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -69,6 +71,8 @@ pub struct CreateProject {
     pub name: String,
     #[serde(default)]
     pub brief: Option<String>,
+    #[serde(default)]
+    pub vertical: Option<String>,
 }
 
 // ── Canon (versioned style rules + exemplars) ─────────────────────────────────

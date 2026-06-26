@@ -102,7 +102,7 @@ export function ProjectWorkspace() {
             (tab === 'canon' ? (
               <div className="flex min-h-0 flex-1 flex-col gap-3">
                 <ContextAsk projectId={projectId} />
-                <CanonView projectId={projectId} />
+                <CanonView projectId={projectId} vertical={project?.vertical} />
               </div>
             ) : tab === 'review' ? (
               <ReviewQueue projectId={projectId} />
@@ -111,7 +111,7 @@ export function ProjectWorkspace() {
             ) : tab === 'collections' ? (
               <CollectionsView projectId={projectId} />
             ) : (
-              <AssetLibrary projectId={projectId} />
+              <AssetLibrary projectId={projectId} vertical={project?.vertical} />
             ))}
         </div>
       </div>

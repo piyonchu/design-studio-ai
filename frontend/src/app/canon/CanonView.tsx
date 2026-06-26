@@ -2,16 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { PaletteIcon, SpinnerGapIcon, CheckIcon, ClockCounterClockwiseIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
-
-// Style rules the canon captures. Free-text; the backend stores them as JSONB.
-const STYLE_FIELDS = [
-  ['render_style', 'Render style', '16-bit pixel art, retro SNES-era sprite'],
-  ['perspective', 'Perspective', 'side view'],
-  ['palette', 'Palette', 'warm earthy tones, ~16 colors'],
-  ['outline', 'Outline', 'clean 1px dark outline'],
-  ['shading', 'Shading', 'flat shading with light dithering'],
-  ['composition', 'Composition', 'one centered isolated asset, transparent bg'],
-] as const
+import { verticalConfig } from '../verticals'
 
 type CanonData = { style?: Record<string, string>; negative?: string[] }
 
@@ -19,7 +10,8 @@ type CanonData = { style?: Record<string, string>; negative?: string[] }
  * Define a project's canon — the style rules every derivation is bound to.
  * Each save appends a new version (lineage handled by the backend).
  */
-export function CanonView({ projectId }: { projectId: string }) {
+export function CanonView({ projectId, vertical }: { projectId: string; vertical?: string }) {
+  const STYLE_FIELDS = verticalConfig(vertical).canonFields
   const [style, setStyle] = useState<Record<string, string>>({})
   const [negative, setNegative] = useState('')
   const [version, setVersion] = useState<number | null>(null)
