@@ -34,7 +34,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | **Vertical-adapter framework** — registry per side (BE prompt rules + validation; FE picker single-source); 3rd vertical **illustration** | ✅ |
 | — | Test suite (18 unit tests over core logic) + GitHub Actions CI | ✅ |
 | — | Activity feed — merged asset/comment/canon timeline (Activity tab) | ✅ |
-| — | Engine adapter — **Godot 4** import-ready pack (per-vertical hook, game_2d) | ✅ (Unity later) |
+| — | Engine adapters — **Godot 4 + Unity** import-ready packs (per-vertical `engines` hook, game_2d) | ✅ (Unity format-validated, not editor-tested) |
 | — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
 
 ### Done — Phase 3.5 (visual intelligence, mock embeddings)
@@ -65,10 +65,11 @@ Asset-level autoname (display names) is a possible follow-up.
 Phases 0–5 + RAG/LLM + audio + verticals framework + real AI are **done and
 merged** (PR #17, `main` @ `8f8e8d5`); 18 unit tests + CI green. Open candidates,
 all decision/spend-gated — confirm before starting:
-- **Engine export adapters** — **Godot 4 done** (per-vertical `engine` hook on
-  the registry; game_2d emits an import-ready pack: textures + `.import` + a
-  drop-in `project.godot`). **Unity next** — a `.meta`-based packer behind the
-  same hook (editor is licensed, so it can't be import-verified here).
+- **Engine export adapters** — **Godot 4 + Unity done** (per-vertical `engines`
+  list hook on the registry; game_2d declares both). Godot pack: textures +
+  `.import` + drop-in `project.godot`. Unity pack: textures + `.meta` (Sprite +
+  stable GUID), copy into `Assets/`. Unity's `.meta` is format-validated, not
+  editor-tested (licensed editor). Next engine = one `Engine` variant + a packer.
 - **4th vertical** (e.g. marketing) — pure config: one row in each registry.
 - **Animation** (frame sequences) — own spike, real-model spend.
 - **Pixel-CLIP visual embedder** — swaps behind `embed_text`; shared-key spend.

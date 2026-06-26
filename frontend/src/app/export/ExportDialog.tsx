@@ -9,9 +9,13 @@ import {
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
-import { engineFor, type Engine } from '../verticals'
+import { enginesFor, type Engine } from '../verticals'
 
-const ENGINE_LABEL: Record<Engine, string> = { godot: 'Godot 4' }
+const ENGINE_LABEL: Record<Engine, string> = { godot: 'Godot 4', unity: 'Unity' }
+const ENGINE_NOTE: Record<Engine, string> = {
+  godot: 'drop-in project: textures + .import + project.godot',
+  unity: 'copy into Assets/: textures + .meta (Sprite + stable GUID)',
+}
 
 /**
  * Export dialog — runs the deterministic pre-export check on a set of assets,
@@ -36,10 +40,11 @@ export function ExportDialog({
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // The engine pack this project's vertical supports (e.g. Godot for game_2d).
-  // When present, default to it — it's the headline of an engine-ready export.
-  const engine = engineFor(vertical)
-  const [target, setTarget] = useState<'generic' | Engine>(engine ?? 'generic')
+  // The engine packs this project's vertical supports (e.g. Godot + Unity for
+  // game_2d). When present, default to the first — it's the headline of an
+  // engine-ready export.
+  const engines = enginesFor(vertical)
+  const [target, setTarget] = useState<'generic' | Engine>(engines[0] ?? 'generic')
 
   useEffect(() => {
     let alive = true
@@ -118,11 +123,11 @@ export function ExportDialog({
               <span className="ml-auto text-xs text-text-dim">{report.assets.length} selected</span>
             </div>
 
-            {engine && (
+            {engines.length > 0 && (
               <div className="flex items-center gap-2 border-b border-white/8 px-4 py-2.5">
                 <span className="text-[11px] uppercase tracking-wider text-text-dim">Pack</span>
                 <div className="flex rounded-[8px] border border-white/10 p-0.5">
-                  {(['generic', engine] as const).map((t) => (
+                  {(['generic', ...engines] as const).map((t) => (
                     <button
                       key={t}
                       onClick={() => setTarget(t)}
@@ -130,14 +135,12 @@ export function ExportDialog({
                         target === t ? 'bg-teal text-bg' : 'text-text-dim hover:text-text'
                       }`}
                     >
-                      {t === 'generic' ? 'Generic zip' : `${ENGINE_LABEL[engine]} project`}
+                      {t === 'generic' ? 'Generic zip' : ENGINE_LABEL[t]}
                     </button>
                   ))}
                 </div>
                 <span className="ml-auto text-right text-[11px] text-text-dim">
-                  {target === 'generic'
-                    ? 'manifest.json + grouped images'
-                    : 'drop-in project: textures + .import + project.godot'}
+                  {target === 'generic' ? 'manifest.json + grouped images' : ENGINE_NOTE[target]}
                 </span>
               </div>
             )}
@@ -195,7 +198,7 @@ export function ExportDialog({
                 ) : (
                   <DownloadSimpleIcon size={14} weight="bold" />
                 )}
-                {target === 'generic' ? 'Download pack' : `Download ${ENGINE_LABEL[engine!]} pack`} (
+                {target === 'generic' ? 'Download pack' : `Download ${ENGINE_LABEL[target]} pack`} (
                 {report.ok_count})
               </button>
             </footer>

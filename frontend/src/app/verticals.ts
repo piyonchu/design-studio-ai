@@ -11,8 +11,8 @@ export interface DerivePreset {
   text: string
 }
 
-/** Engine an export pack can target — mirrors the backend `verticals::Engine`. */
-export type Engine = 'godot'
+/** Engines an export pack can target — mirrors the backend `verticals::Engine`. */
+export type Engine = 'godot' | 'unity'
 
 export interface VerticalConfig {
   label: string
@@ -20,14 +20,14 @@ export interface VerticalConfig {
   derivePresets: DerivePreset[]
   /** Canon style fields: [key, label, placeholder]. */
   canonFields: [string, string, string][]
-  /** Engine this vertical can emit an import-ready export pack for, if any. */
-  engine?: Engine
+  /** Engines this vertical can emit an import-ready export pack for. */
+  engines?: Engine[]
 }
 
 export const VERTICALS: Record<Vertical, VerticalConfig> = {
   game_2d: {
     label: 'Game (2D)',
-    engine: 'godot',
+    engines: ['godot', 'unity'],
     derivePresets: [
       { id: 'walk', label: 'Walk', text: 'Show the SAME character in a mid-walk side stride pose. Keep identical identity, palette, and proportions.' },
       { id: 'action', label: 'Action', text: 'Show the SAME character in a dynamic action pose. Keep identical identity, palette, and proportions.' },
@@ -81,5 +81,5 @@ export const VERTICALS: Record<Vertical, VerticalConfig> = {
 export const verticalConfig = (v?: string | null): VerticalConfig =>
   VERTICALS[(v as Vertical) in VERTICALS ? (v as Vertical) : 'game_2d']
 
-/** The engine export target a project's vertical supports, if any. */
-export const engineFor = (v?: string | null): Engine | undefined => verticalConfig(v).engine
+/** The engine export targets a project's vertical supports (possibly none). */
+export const enginesFor = (v?: string | null): Engine[] => verticalConfig(v).engines ?? []
