@@ -1,6 +1,7 @@
 mod assets;
 mod auth;
 mod canon;
+mod collections;
 mod projects;
 mod workspaces;
 
@@ -17,4 +18,5 @@ pub fn router() -> Router<AppState> {
         .merge(projects::router())
         .merge(canon::router())
         .merge(assets::router())
+        .merge(collections::router())
 }

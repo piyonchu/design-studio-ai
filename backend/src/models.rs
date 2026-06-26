@@ -189,3 +189,42 @@ pub struct AssetDetail {
     pub base: Option<Asset>,
     pub derivatives: Vec<Asset>,
 }
+
+// ── Collections ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct Collection {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub name: String,
+    pub cover_asset_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// List row: a collection with its item count + a cover asset to thumbnail.
+#[derive(Debug, Serialize, FromRow)]
+pub struct CollectionSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub item_count: i64,
+    pub cover_asset_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A collection plus its assets.
+#[derive(Debug, Serialize)]
+pub struct CollectionDetail {
+    #[serde(flatten)]
+    pub collection: Collection,
+    pub assets: Vec<Asset>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateCollection {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddItems {
+    pub asset_ids: Vec<Uuid>,
+}

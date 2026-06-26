@@ -24,7 +24,7 @@ pub fn router() -> Router<AppState> {
         .route("/assets/:id/file", get(file))
 }
 
-const ASSET_COLS: &str =
+pub(crate) const ASSET_COLS: &str =
     "id, project_id, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, created_at";
 
 /// 10 MB cap on a single uploaded asset.
@@ -32,7 +32,7 @@ const MAX_UPLOAD: usize = 10 * 1024 * 1024;
 
 /// Fill in the browser-usable `url` for an asset. Object-stored assets are
 /// served through our authed proxy; inline assets carry the URL directly.
-fn with_url(mut a: Asset) -> Asset {
+pub(crate) fn with_url(mut a: Asset) -> Asset {
     a.url = if is_inline(&a.s3_key) {
         a.s3_key.clone()
     } else {
