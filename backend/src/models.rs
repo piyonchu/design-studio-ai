@@ -156,6 +156,8 @@ pub struct Asset {
     /// was produced under (null for uploaded/seeded assets).
     pub derivation: Option<String>,
     pub canon_version_id: Option<Uuid>,
+    /// Approved style anchor: future generation conditions on it (the moat loop).
+    pub exemplar: bool,
     pub created_at: DateTime<Utc>,
     /// Stable, browser-usable URL for the image. Not stored — filled in by the
     /// route after fetching (see `routes::assets`). For object-stored assets
@@ -190,6 +192,8 @@ pub struct UpdateAsset {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub exemplar: Option<bool>,
 }
 
 /// An asset plus its lineage: the base it was derived from, and its derivatives.

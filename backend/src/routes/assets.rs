@@ -25,7 +25,7 @@ pub fn router() -> Router<AppState> {
 }
 
 pub(crate) const ASSET_COLS: &str =
-    "id, project_id, name, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, created_at";
+    "id, project_id, name, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, exemplar, created_at";
 
 /// 10 MB cap on a single uploaded asset.
 const MAX_UPLOAD: usize = 10 * 1024 * 1024;
@@ -71,9 +71,39 @@ async fn generate(
         None => (None, body.prompt.clone()),
     };
 
+    // The moat loop: if the project has an approved style exemplar, condition
+    // generation on it (reference img2img) so new assets inherit the approved
+    // art direction. Falls back to text-only when there's none (or it can't be
+    // referenced, e.g. an inline/remote-URL asset).
+    let exemplar: Option<(Uuid, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, s3_key, mime_type FROM assets
+         WHERE project_id = $1 AND exemplar AND status = 'approved'
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(project_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let exemplar_ref = match &exemplar {
+        Some((eid, key, mime)) => match asset_bytes(&state, key, mime.as_deref()).await {
+            Ok((bytes, m)) => {
+                tracing::info!(exemplar = %eid, "conditioning generation on approved exemplar");
+                Some((*eid, bytes, m))
+            }
+            Err(_) => None,
+        },
+        None => None,
+    };
+    let exemplar_meta = match &exemplar_ref {
+        Some((eid, _, _)) => serde_json::json!({ "exemplar_id": eid }),
+        None => serde_json::json!({}),
+    };
+
     let mut assets = Vec::with_capacity(count as usize);
     for n in 0..count as usize {
-        let img = ai::images::generate_image(&prompt, n).await?;
+        let img = match &exemplar_ref {
+            Some((_, bytes, mime)) => ai::images::derive_image(bytes, mime, &prompt, n).await?,
+            None => ai::images::generate_image(&prompt, n).await?,
+        };
 
         // Object storage when configured; otherwise store the image inline as a
         // data URL so the app still works with no object store.
@@ -87,14 +117,15 @@ async fn generate(
         };
 
         let asset = sqlx::query_as::<_, Asset>(&format!(
-            "INSERT INTO assets (project_id, kind, s3_key, mime_type, prompt, source_kind, canon_version_id)
-             VALUES ($1, 'image', $2, $3, $4, 'seeded', $5) RETURNING {ASSET_COLS}"
+            "INSERT INTO assets (project_id, kind, s3_key, mime_type, prompt, source_kind, canon_version_id, metadata)
+             VALUES ($1, 'image', $2, $3, $4, 'seeded', $5, $6) RETURNING {ASSET_COLS}"
         ))
         .bind(project_id)
         .bind(&s3_key)
         .bind(&img.mime)
         .bind(&body.prompt)
         .bind(canon_id)
+        .bind(&exemplar_meta)
         .fetch_one(&state.pool)
         .await?;
         ai::embeddings::index_asset_soft(&state.pool, &asset).await;
@@ -313,10 +344,11 @@ async fn update_asset(
 
     let asset = sqlx::query_as::<_, Asset>(&format!(
         "UPDATE assets SET
-           status = COALESCE($1::asset_status, status),
-           role   = COALESCE($2::text, role),
-           tags   = COALESCE($3::text[], tags),
-           name   = COALESCE($5::text, name)
+           status   = COALESCE($1::asset_status, status),
+           role     = COALESCE($2::text, role),
+           tags     = COALESCE($3::text[], tags),
+           name     = COALESCE($5::text, name),
+           exemplar = COALESCE($6::boolean, exemplar)
          WHERE id = $4 RETURNING {ASSET_COLS}"
     ))
     .bind(body.status)
@@ -324,6 +356,7 @@ async fn update_asset(
     .bind(body.tags)
     .bind(id)
     .bind(body.name)
+    .bind(body.exemplar)
     .fetch_one(&state.pool)
     .await?;
     Ok(Json(with_url(asset)))
