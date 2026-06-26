@@ -22,7 +22,8 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 4 | Audio modality — provider boundary + mock WAV + generate/play | ✅ (mock; no hosted provider yet) |
 | 5 · PR1 | Export — generic zip + manifest + pre-export checks | ✅ |
 | 5 · PR2 | Export — role/tag-grouped pack (vertical-neutral) | ✅ |
-| 3.5 PR2 | Semantic context RAG — "Ask this project" over briefs/prompts/comments/canon | ✅ (mock; retrieval-only) |
+| 3.5 PR2 | Semantic context RAG — "Ask this project" over briefs/prompts/comments/canon | ✅ |
+| 3.5 PR3 | LLM answer-synthesis over retrieval + disk cache (cheap real spend) | ✅ (google/gemini-2.5-flash; cached) |
 | — | Smart versioning — auto canon change-notes (deterministic diff) + history | ✅ |
 | — | Asset naming — editable name + auto-derived display labels (drives export filename) | ✅ |
 | — | Engine adapters (Godot/Unity) consuming the grouped manifest | ⏳ (deferred — rule of three) |
