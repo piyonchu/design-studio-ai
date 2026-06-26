@@ -69,8 +69,9 @@ fn slug(s: &str) -> String {
 /// index-prefixed for stable uniqueness within the pack.
 fn check_one(index: usize, asset: &Asset, bytes: &[u8], mime: &str) -> (AssetCheck, Vec<u8>) {
     let ext = ext_for(mime);
-    let base = slug(asset.role.as_deref().unwrap_or("asset"));
-    let base = if base.is_empty() { "asset".to_string() } else { base };
+    let role_slug = slug(asset.role.as_deref().unwrap_or(""));
+    let group = if role_slug.is_empty() { "ungrouped".to_string() } else { role_slug };
+    let base = if group == "ungrouped" { "asset".to_string() } else { group.clone() };
     let filename = format!("{index:02}-{base}.{ext}");
 
     let mut issues: Vec<String> = Vec::new();
@@ -105,6 +106,8 @@ fn check_one(index: usize, asset: &Asset, bytes: &[u8], mime: &str) -> (AssetChe
             id: asset.id,
             filename,
             role: asset.role.clone(),
+            group,
+            tags: asset.tags.clone(),
             status: asset.status,
             format,
             width,
@@ -179,15 +182,39 @@ async fn export(
     let included: Vec<&(AssetCheck, Vec<u8>)> = checked.iter().filter(|(c, _)| c.ok).collect();
     let skipped: Vec<&AssetCheck> = checked.iter().filter(|(c, _)| !c.ok).map(|(c, _)| c).collect();
 
+    // The pack path for an included asset: assets/<group>/<filename>.
+    let path_of = |c: &AssetCheck| format!("assets/{}/{}", c.group, c.filename);
+
+    // Groups in first-seen order, each listing its in-pack file paths. A future
+    // engine adapter (Godot/Unity) maps a group → an animation / atlas.
+    let mut group_order: Vec<String> = Vec::new();
+    for (c, _) in &included {
+        if !group_order.contains(&c.group) {
+            group_order.push(c.group.clone());
+        }
+    }
+    let groups = group_order.iter().map(|g| {
+        let files: Vec<String> = included
+            .iter()
+            .filter(|(c, _)| &c.group == g)
+            .map(|(c, _)| path_of(c))
+            .collect();
+        serde_json::json!({ "name": g, "count": files.len(), "files": files })
+    }).collect::<Vec<_>>();
+
     let manifest = serde_json::json!({
         "project": project_name,
         "canon_version": canon_version,
         "exported_at": chrono::Utc::now().to_rfc3339(),
         "asset_count": included.len(),
+        "groups": groups,
         "assets": included.iter().map(|(c, _)| serde_json::json!({
             "id": c.id,
+            "path": path_of(c),
             "filename": c.filename,
+            "group": c.group,
             "role": c.role,
+            "tags": c.tags,
             "status": c.status,
             "format": c.format,
             "width": c.width,
@@ -209,7 +236,7 @@ async fn export(
             .map_err(|e| AppError::Internal(format!("zip: {e}")))?;
 
         for (c, bytes) in &included {
-            zip.start_file(format!("assets/{}", c.filename), opts)
+            zip.start_file(path_of(c), opts)
                 .map_err(|e| AppError::Internal(format!("zip: {e}")))?;
             zip.write_all(bytes)
                 .map_err(|e| AppError::Internal(format!("zip: {e}")))?;

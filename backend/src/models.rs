@@ -285,6 +285,10 @@ pub struct AssetCheck {
     pub id: Uuid,
     pub filename: String,
     pub role: Option<String>,
+    /// Grouping key (slugged role, or "ungrouped"). Drives the zip folder + the
+    /// manifest groups so an engine adapter can map groups → animations later.
+    pub group: String,
+    pub tags: Vec<String>,
     pub status: AssetStatus,
     pub format: Option<String>,
     pub width: Option<u32>,

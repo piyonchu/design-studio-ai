@@ -282,6 +282,8 @@ export interface AssetCheck {
   id: string
   filename: string
   role: string | null
+  group: string
+  tags: string[]
   status: AssetStatus
   format: string | null
   width: number | null

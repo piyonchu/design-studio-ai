@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   XIcon,
   SpinnerGapIcon,
@@ -42,6 +42,18 @@ export function ExportDialog({
       alive = false
     }
   }, [projectId, assetIds])
+
+  // Group the report rows by their pack group (slugged role), first-seen order.
+  const groupedEntries = useMemo<[string, api.AssetCheck[]][]>(() => {
+    const m = new Map<string, api.AssetCheck[]>()
+    for (const a of report?.assets ?? []) {
+      const g = a.group || 'ungrouped'
+      const arr = m.get(g) ?? []
+      arr.push(a)
+      m.set(g, arr)
+    }
+    return [...m.entries()]
+  }, [report])
 
   async function download() {
     if (downloading) return
@@ -97,36 +109,43 @@ export function ExportDialog({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-              <ul className="space-y-1.5">
-                {report.assets.map((a) => (
-                  <li
-                    key={a.id}
-                    className={`flex items-start gap-2 rounded-[10px] px-2.5 py-2 text-xs ${
-                      a.ok ? 'bg-white/[0.03]' : 'bg-amber-400/8'
-                    }`}
-                  >
-                    {a.ok ? (
-                      <CheckCircleIcon size={15} weight="fill" className="mt-0.5 shrink-0 text-teal" />
-                    ) : (
-                      <WarningIcon size={15} weight="fill" className="mt-0.5 shrink-0 text-amber-300" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2">
-                        <span className="truncate font-medium text-text">{a.filename}</span>
-                        {a.width && a.height ? (
-                          <span className="shrink-0 text-[10px] text-text-dim">
-                            {a.width}×{a.height}
-                            {a.has_alpha ? ' · alpha' : ''}
-                          </span>
-                        ) : null}
-                      </p>
-                      {a.issues.length > 0 && (
-                        <p className="mt-0.5 text-[11px] text-text-dim">{a.issues.join(' · ')}</p>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              {groupedEntries.map(([group, items]) => (
+                <div key={group} className="mb-3 last:mb-0">
+                  <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-text-dim">
+                    {group} · {items.length}
+                  </p>
+                  <ul className="space-y-1.5">
+                    {items.map((a) => (
+                      <li
+                        key={a.id}
+                        className={`flex items-start gap-2 rounded-[10px] px-2.5 py-2 text-xs ${
+                          a.ok ? 'bg-white/[0.03]' : 'bg-amber-400/8'
+                        }`}
+                      >
+                        {a.ok ? (
+                          <CheckCircleIcon size={15} weight="fill" className="mt-0.5 shrink-0 text-teal" />
+                        ) : (
+                          <WarningIcon size={15} weight="fill" className="mt-0.5 shrink-0 text-amber-300" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-center gap-2">
+                            <span className="truncate font-medium text-text">{a.filename}</span>
+                            {a.width && a.height ? (
+                              <span className="shrink-0 text-[10px] text-text-dim">
+                                {a.width}×{a.height}
+                                {a.has_alpha ? ' · alpha' : ''}
+                              </span>
+                            ) : null}
+                          </p>
+                          {a.issues.length > 0 && (
+                            <p className="mt-0.5 text-[11px] text-text-dim">{a.issues.join(' · ')}</p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
 
             <footer className="flex items-center gap-3 border-t border-white/8 px-4 py-3">
