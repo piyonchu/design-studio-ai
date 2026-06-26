@@ -167,23 +167,3 @@ pub async fn require_project_access(
     .await?;
     check_role(role, min)
 }
-
-/// Authorize access to an artifact via its project's workspace.
-pub async fn require_artifact_access(
-    pool: &PgPool,
-    artifact_id: Uuid,
-    user_id: Uuid,
-    min: WorkspaceRole,
-) -> Result<(), AppError> {
-    let role: Option<WorkspaceRole> = sqlx::query_scalar(
-        "SELECT m.role FROM artifacts a
-         JOIN projects p ON p.id = a.project_id
-         JOIN workspace_members m ON m.workspace_id = p.workspace_id
-         WHERE a.id = $1 AND m.user_id = $2",
-    )
-    .bind(artifact_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
-    check_role(role, min)
-}

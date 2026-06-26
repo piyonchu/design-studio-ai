@@ -11,19 +11,18 @@ use uuid::Uuid;
 use crate::ai;
 use crate::auth::{self, AuthUser};
 use crate::error::AppError;
-use crate::models::{Asset, AttachAsset, GenerateAssets, WorkspaceRole};
+use crate::models::{Asset, GenerateAssets, WorkspaceRole};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/projects/:project_id/assets", get(list).post(generate))
         .route("/projects/:project_id/assets/upload", post(upload))
-        .route("/assets/:id/attach", post(attach))
         .route("/assets/:id/file", get(file))
 }
 
 const ASSET_COLS: &str =
-    "id, project_id, screen_id, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, created_at";
+    "id, project_id, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, created_at";
 
 /// 10 MB cap on a single uploaded asset.
 const MAX_UPLOAD: usize = 10 * 1024 * 1024;
@@ -152,32 +151,6 @@ async fn list(
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(rows.into_iter().map(with_url).collect()))
-}
-
-/// Record the asset↔screen relationship (Design Memory).
-async fn attach(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<Uuid>,
-    Json(body): Json<AttachAsset>,
-) -> Result<Json<Asset>, AppError> {
-    // Authorize via the asset's owning project.
-    let project_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT project_id FROM assets WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&state.pool)
-            .await?;
-    let project_id = project_id.ok_or(AppError::NotFound)?;
-    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
-
-    let asset = sqlx::query_as::<_, Asset>(&format!(
-        "UPDATE assets SET screen_id = $1 WHERE id = $2 RETURNING {ASSET_COLS}"
-    ))
-    .bind(body.screen_artifact_id)
-    .bind(id)
-    .fetch_one(&state.pool)
-    .await?;
-    Ok(Json(with_url(asset)))
 }
 
 /// Stream an asset's image bytes. Stable, same-origin URL safe to embed in a
