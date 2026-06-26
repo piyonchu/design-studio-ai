@@ -155,7 +155,7 @@ export function LineageView({ projectId }: { projectId: string }) {
             <div className="flex items-center gap-2.5 p-2">
               <img src={asset.url} alt="" className="size-12 shrink-0 rounded-[8px] object-cover ring-1 ring-white/10" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs text-text">{asset.role ?? asset.prompt ?? asset.derivation ?? 'untitled'}</p>
+                <p className="truncate text-xs text-text">{api.displayName(asset)}</p>
                 <p className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-text-dim">
                   <span className={`size-1.5 rounded-full ${STATUS_DOT[asset.status]}`} />
                   {asset.status.replace('_', ' ')} · {asset.source_kind}

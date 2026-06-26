@@ -25,7 +25,7 @@ pub fn router() -> Router<AppState> {
 }
 
 pub(crate) const ASSET_COLS: &str =
-    "id, project_id, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, created_at";
+    "id, project_id, name, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, created_at";
 
 /// 10 MB cap on a single uploaded asset.
 const MAX_UPLOAD: usize = 10 * 1024 * 1024;
@@ -315,13 +315,15 @@ async fn update_asset(
         "UPDATE assets SET
            status = COALESCE($1::asset_status, status),
            role   = COALESCE($2::text, role),
-           tags   = COALESCE($3::text[], tags)
+           tags   = COALESCE($3::text[], tags),
+           name   = COALESCE($5::text, name)
          WHERE id = $4 RETURNING {ASSET_COLS}"
     ))
     .bind(body.status)
     .bind(body.role)
     .bind(body.tags)
     .bind(id)
+    .bind(body.name)
     .fetch_one(&state.pool)
     .await?;
     Ok(Json(with_url(asset)))

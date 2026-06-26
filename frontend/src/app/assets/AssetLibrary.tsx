@@ -707,11 +707,9 @@ export function AssetLibrary({ projectId }: { projectId: string }) {
                       </div>
                     )}
 
-                    {(a.derivation ?? a.prompt ?? a.role) && (
-                      <figcaption className="truncate px-2 py-1.5 text-[11px] text-text-dim">
-                        {a.derivation ?? a.prompt ?? a.role}
-                      </figcaption>
-                    )}
+                    <figcaption className="truncate px-2 py-1.5 text-[11px] text-text-dim">
+                      {api.displayName(a)}
+                    </figcaption>
                   </figure>
                 )
               })}

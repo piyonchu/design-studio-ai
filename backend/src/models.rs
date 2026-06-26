@@ -136,6 +136,8 @@ pub struct SignupResponse {
 pub struct Asset {
     pub id: Uuid,
     pub project_id: Uuid,
+    /// Optional explicit display name; null → UI derives one from role + prompt.
+    pub name: Option<String>,
     pub kind: AssetKind,
     /// Object-storage key (S3/MinIO), or a `data:`/`http` URL in inline mode.
     pub s3_key: String,
@@ -182,6 +184,8 @@ pub struct UpdateAsset {
     pub role: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 /// An asset plus its lineage: the base it was derived from, and its derivatives.

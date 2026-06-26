@@ -69,9 +69,17 @@ fn slug(s: &str) -> String {
 /// index-prefixed for stable uniqueness within the pack.
 fn check_one(index: usize, asset: &Asset, bytes: &[u8], mime: &str) -> (AssetCheck, Vec<u8>) {
     let ext = ext_for(mime);
+    // Group by role (folder); name the file by the explicit name, else the role.
     let role_slug = slug(asset.role.as_deref().unwrap_or(""));
     let group = if role_slug.is_empty() { "ungrouped".to_string() } else { role_slug };
-    let base = if group == "ungrouped" { "asset".to_string() } else { group.clone() };
+    let name_slug = slug(asset.name.as_deref().unwrap_or(""));
+    let base = if !name_slug.is_empty() {
+        name_slug
+    } else if group != "ungrouped" {
+        group.clone()
+    } else {
+        "asset".to_string()
+    };
     let filename = format!("{index:02}-{base}.{ext}");
 
     let mut issues: Vec<String> = Vec::new();

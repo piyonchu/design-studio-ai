@@ -113,6 +113,7 @@ export type AssetStatus = 'candidate' | 'approved' | 'rejected' | 'needs_review'
 export interface Asset {
   id: string
   project_id: string
+  name: string | null // explicit display name; null → derive from role/prompt
   kind: string
   s3_key: string // object-storage key (or data/http URL in inline mode)
   url: string // stable, browser-usable image URL — use for <img src> / props.src
@@ -171,12 +172,25 @@ export const setAssetStatus = (assetId: string, status: AssetStatus) =>
 /** One asset with its lineage (base + derivatives). */
 export const getAsset = (id: string) => request<AssetDetail>(`/assets/${id}`)
 
-/** Patch editable metadata (role / tags). Only provided fields change. */
-export const updateAsset = (id: string, patch: { role?: string; tags?: string[] }) =>
+/** Patch editable metadata (name / role / tags). Only provided fields change. */
+export const updateAsset = (id: string, patch: { name?: string; role?: string; tags?: string[] }) =>
   request<Asset>(`/assets/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
   })
+
+/** A friendly label: the explicit name, else an auto-derived one (role + prompt). */
+export function displayName(a: Asset): string {
+  if (a.name?.trim()) return a.name.trim()
+  const role = a.role?.trim()
+  const text = (a.prompt ?? a.derivation ?? '').trim().replace(/\s+/g, ' ')
+  const short = text.split(' ').slice(0, 5).join(' ')
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  if (role && short) return `${cap(role)} · ${short}`
+  if (short) return short
+  if (role) return cap(role)
+  return a.kind === 'audio' ? 'Audio clip' : 'Untitled asset'
+}
 
 /** Delete an asset (its lineage edges cascade). */
 export const deleteAsset = (id: string) => request<void>(`/assets/${id}`, { method: 'DELETE' })

@@ -23,6 +23,7 @@ export function AssetInspector({
   onDeleted: (id: string) => void
 }) {
   const [detail, setDetail] = useState<api.AssetDetail | null>(null)
+  const [name, setName] = useState('')
   const [role, setRole] = useState('')
   const [tags, setTags] = useState('')
   const [busy, setBusy] = useState(false)
@@ -48,6 +49,7 @@ export function AssetInspector({
       .then((d) => {
         if (!alive) return
         setDetail(d)
+        setName(d.name ?? '')
         setRole(d.role ?? '')
         setTags(d.tags.join(', '))
         api.listCollections(d.project_id).then((cs) => alive && setCollections(cs)).catch(() => {})
@@ -67,6 +69,7 @@ export function AssetInspector({
     setSaved(false)
     try {
       const updated = await api.updateAsset(detail.id, {
+        name: name.trim(),
         role: role.trim(),
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       })
@@ -152,6 +155,15 @@ export function AssetInspector({
               </p>
             )}
 
+            <label className="mb-3 grid gap-1.5">
+              <span className="text-xs font-medium text-text-dim">Name</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={api.displayName(detail)}
+                className="rounded-[10px] bg-surface/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
+              />
+            </label>
             <label className="mb-3 grid gap-1.5">
               <span className="text-xs font-medium text-text-dim">Role</span>
               <input

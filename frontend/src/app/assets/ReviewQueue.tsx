@@ -86,9 +86,7 @@ export function ReviewQueue({ projectId }: { projectId: string }) {
               >
                 <img src={a.url} alt="" className="size-11 shrink-0 rounded-[8px] object-cover ring-1 ring-white/10" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs text-text">
-                    {a.role ?? a.prompt ?? a.derivation ?? 'untitled'}
-                  </span>
+                  <span className="block truncate text-xs text-text">{api.displayName(a)}</span>
                   <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-text-dim">
                     <span className={`size-1.5 rounded-full ${a.status === 'needs_review' ? 'bg-rose-400' : 'bg-amber-400'}`} />
                     {a.status.replace('_', ' ')} · {a.source_kind}
