@@ -26,7 +26,7 @@ Open http://localhost:5173 → sign up → open a project.
 ### AI modes (in `.env`)
 - `ASSET_MOCK=true` → **free** placeholder SVGs, no API calls. Default for dev.
 - `ASSET_MOCK=false` + `OPENROUTER_API_KEY=...` → real images (≈$0.04/image).
-- The shared OpenRouter key is **not** in git (`.env` is gitignored) — get it from the team. (~$8.78 left at handoff.)
+- The shared OpenRouter key is **not** in git (gitignored `.env`) — from the team (~$9.57/$10 left). `*_MOCK=false` (ASSET/EMBED/LLM) flips on real image gen + embeddings + answer-synthesis (cheap; cached). Default `.env.example` keeps all mocks on (free dev/CI).
 
 ## What's built (Phases 0–5 + RAG, all mock-mode by default)
 - **Auth** — email+password, httpOnly session cookie, workspace roles.
@@ -39,7 +39,7 @@ Open http://localhost:5173 → sign up → open a project.
 - **Review queue** (Review tab) — candidate + needs-review backlog as a worklist; focused preview + approve/needs-review/reject with the discussion side-by-side; a decision advances to the next.
 - **Comments** — per-asset discussion thread (in the inspector and the queue): author + relative time, post, delete-own (project Owner can moderate).
 - **Lineage** (Lineage tab) — roots → derivatives tree; canon-drift detection: assets predating the current canon are flagged stale, with per-node Keep (reconcile) / Regenerate and a "Keep all" action.
-- **Smart search / dedup** — `ai/embeddings.rs` (mock feature-hashed embedder, `EMBED_MOCK` default) indexes assets on insert (generate/derive/**upload**/audio) into `visual_embeddings`. Board search box → `/assets/search?q` (semantic ranking); pre-generate nudge → `/assets/similar-check`; `/assets/:id/similar`; `/embeddings/backfill` for imports/old assets. Real text/CLIP model is a localized swap.
+- **Smart search / dedup** — `ai/embeddings.rs` indexes assets on insert (generate/derive/**upload**/audio) into `visual_embeddings`. Board search box → `/assets/search?q` (semantic ranking); pre-generate nudge → `/assets/similar-check`; `/assets/:id/similar`; `/embeddings/backfill`. `EMBED_MOCK=true` (default) = free feature-hashed (lexical); `EMBED_MOCK=false` + key = **real semantic** embeddings (`openai/text-embedding-3-small` via OpenRouter `/embeddings`, `dimensions` param matched to columns, disk-cached). After flipping mock↔real, re-run `/embeddings/backfill` + `/context/backfill` (mock and real vectors aren't comparable). Visual embeddings use the caption; pixel-CLIP is a future swap behind `embed_text`.
 - **Semantic context ("Ask this project")** — `semantic_embeddings` over brief / asset prompts / comments / canon; box atop the Canon tab → `/context?q` returns `{answer, sources}` + `/context/backfill`.
 - **LLM answer-synthesis** — `ai/llm.rs` synthesizes a grounded answer from the retrieved snippets (`LLM_MOCK` default; real = `google/gemini-2.5-flash`, cheap). `ai/cache.rs` content-addressed disk cache under `AI_CACHE_DIR` (gitignored) so identical calls never re-spend. **The shared OpenRouter key also serves text** (it's a fraction of a cent/answer). Local `.env` currently has `LLM_MOCK=false` (real) — flip to `true` for free dev.
 - **Smart versioning** — each canon version gets an auto-generated deterministic "what changed" note (`canon.change_note`, mig 0008); `GET /canon/history` + a version-history list in the Canon tab. No LLM.

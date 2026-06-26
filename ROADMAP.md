@@ -18,7 +18,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 3 · PR3 | Smart asset board (filters · search · status language · batch) | ✅ |
 | 3 · PR4 | Collaboration: review queue + comment threads | ✅ |
 | 3 · PR5 | Lineage graph + canon-change propagation | ✅ |
-| 3.5 | Visual intelligence — embedding pipeline (search · dedup · find-similar) | ✅ (mock embedder; real text/CLIP model is a swap-in, gated on spend) |
+| 3.5 | Visual intelligence — embedding pipeline (search · dedup · find-similar) | ✅ (real text embedder `text-embedding-3-small`, cached, behind `EMBED_MOCK`; pixel-CLIP later) |
 | 4 | Audio modality — provider boundary + mock WAV + generate/play | ✅ (mock; no hosted provider yet) |
 | 5 · PR1 | Export — generic zip + manifest + pre-export checks | ✅ |
 | 5 · PR2 | Export — role/tag-grouped pack (vertical-neutral) | ✅ |
