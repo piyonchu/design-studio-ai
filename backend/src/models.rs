@@ -247,3 +247,26 @@ pub struct AssetComment {
 pub struct CreateComment {
     pub body: String,
 }
+
+// ── Lineage + canon propagation ──────────────────────────────────────────────
+
+/// A directed edge in the asset graph (currently always `derived_from`).
+#[derive(Debug, Serialize, FromRow)]
+pub struct AssetLink {
+    pub from_asset: Uuid,
+    pub to_asset: Uuid,
+    pub relation: String,
+}
+
+/// The whole project graph in one payload: every asset (the nodes) + the
+/// derivation edges. The frontend lays out roots → derivatives from this.
+#[derive(Debug, Serialize)]
+pub struct LineageGraph {
+    pub assets: Vec<Asset>,
+    pub links: Vec<AssetLink>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReconcileRequest {
+    pub asset_ids: Vec<Uuid>,
+}
