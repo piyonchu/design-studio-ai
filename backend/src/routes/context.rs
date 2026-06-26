@@ -4,10 +4,10 @@ use axum::{Json, Router};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::ai::embeddings;
+use crate::ai::{embeddings, llm};
 use crate::auth::{self, AuthUser};
 use crate::error::AppError;
-use crate::models::{ContextHit, SearchQuery, WorkspaceRole};
+use crate::models::{ContextAnswer, ContextHit, SearchQuery, WorkspaceRole};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -24,13 +24,13 @@ async fn ask(
     user: AuthUser,
     Path(project_id): Path<Uuid>,
     Query(q): Query<SearchQuery>,
-) -> Result<Json<Vec<ContextHit>>, AppError> {
+) -> Result<Json<ContextAnswer>, AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
     let Some(vec) = embeddings::embed_text(&q.q, embeddings::SEMANTIC_DIM) else {
-        return Ok(Json(Vec::new()));
+        return Ok(Json(ContextAnswer { answer: String::new(), sources: Vec::new() }));
     };
     let pg = embeddings::to_pgvector(&vec);
-    let hits = sqlx::query_as::<_, ContextHit>(
+    let sources = sqlx::query_as::<_, ContextHit>(
         "SELECT source_kind, source_id, content, 1 - (embedding <=> $2::vector) AS score
          FROM semantic_embeddings
          WHERE project_id = $1
@@ -41,7 +41,17 @@ async fn ask(
     .bind(pg)
     .fetch_all(&state.pool)
     .await?;
-    Ok(Json(hits))
+
+    // Synthesize an answer from the strongest snippets (retrieve → synthesize).
+    let notes: Vec<String> = sources
+        .iter()
+        .filter(|s| s.score > 0.05)
+        .take(5)
+        .map(|s| s.content.clone())
+        .collect();
+    let answer = llm::synthesize(&q.q, &notes).await?;
+
+    Ok(Json(ContextAnswer { answer, sources }))
 }
 
 /// (Re)build the project's semantic index from scratch: brief + every asset

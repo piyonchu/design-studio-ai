@@ -300,6 +300,14 @@ pub struct ContextHit {
     pub score: f64,
 }
 
+/// An LLM-synthesized answer over the retrieved snippets, plus the sources it
+/// drew from (RAG: retrieve → synthesize).
+#[derive(Debug, Serialize)]
+pub struct ContextAnswer {
+    pub answer: String,
+    pub sources: Vec<ContextHit>,
+}
+
 /// An asset plus its similarity score (cosine, 1.0 = identical) for search,
 /// "find similar", and the pre-generate dedup nudge.
 #[derive(Debug, Serialize, FromRow)]
