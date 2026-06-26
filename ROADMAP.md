@@ -61,11 +61,18 @@ Canon versions now carry an auto-generated **deterministic diff** note ("palette
 guess. `GET /canon/history` + a version-history list in the Canon tab.
 Asset-level autoname (display names) is a possible follow-up.
 
-## Next: Nav shell (left rail) — or pick the next vertical
-Export is generic and grouped; engine-specific packers (Godot/Unity) are
-**deferred** — they're a per-vertical adapter, and per PLAN we don't build the
-adapter layer until 2–3 verticals exist (rule of three). The grouped manifest
-(`groups[]` keyed by role/tag) is the seam an adapter will consume.
+## Where it stands (2026-06-27)
+Phases 0–5 + RAG/LLM + audio + verticals framework + real AI are **done and
+merged** (PR #17, `main` @ `8f8e8d5`); 18 unit tests + CI green. Open candidates,
+all decision/spend-gated — confirm before starting:
+- **Engine export adapters** (Godot/Unity) — consume the grouped manifest
+  (`groups[]` by role/tag); per PLAN the adapter layer waited for the rule of
+  three, now met. Needs a target-format decision.
+- **4th vertical** (e.g. marketing) — pure config: one row in each registry.
+- **Animation** (frame sequences) — own spike, real-model spend.
+- **Pixel-CLIP visual embedder** — swaps behind `embed_text`; shared-key spend.
+- **Commercialization track** — async gen queue, billing/quotas, deploy,
+  CORS lockdown, content moderation, password-reset/email-verify, pagination.
 
 ### Done — Phase 4 (audio modality, mock)
 - `ai/audio.rs` mirrors the image boundary: `AUDIO_MOCK=true` synthesizes a
