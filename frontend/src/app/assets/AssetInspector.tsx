@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon } from '@phosphor-icons/react'
+import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon, StarIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { CommentThread } from './CommentThread'
@@ -83,6 +83,21 @@ export function AssetInspector({
     }
   }
 
+  async function toggleExemplar() {
+    if (!detail || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const updated = await api.updateAsset(detail.id, { exemplar: !detail.exemplar })
+      setDetail((d) => (d ? { ...d, ...updated } : d))
+      onChanged(updated)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Update failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function addTo() {
     if (!detail || !selectedCol) return
     try {
@@ -147,7 +162,30 @@ export function AssetInspector({
               {detail.canon_version_id && (
                 <span className="rounded-[6px] bg-white/8 px-1.5 py-0.5 text-text-dim">canon-bound</span>
               )}
+              {detail.exemplar && (
+                <span className="inline-flex items-center gap-1 rounded-[6px] bg-amber-400/15 px-1.5 py-0.5 text-amber-200">
+                  <StarIcon size={11} weight="fill" /> exemplar
+                </span>
+              )}
             </div>
+
+            <button
+              onClick={toggleExemplar}
+              disabled={busy || (detail.status !== 'approved' && !detail.exemplar)}
+              title={
+                detail.status !== 'approved'
+                  ? 'Approve the asset first — only approved assets shape the canon'
+                  : 'Approved exemplars condition future generation'
+              }
+              className={`mb-4 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border px-3 py-2 text-sm transition disabled:opacity-40 ${
+                detail.exemplar
+                  ? 'border-amber-400/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15'
+                  : 'border-white/10 text-text-dim hover:text-text'
+              }`}
+            >
+              <StarIcon size={14} weight={detail.exemplar ? 'fill' : 'regular'} />
+              {detail.exemplar ? 'Style exemplar (conditions new gens)' : 'Use as style exemplar'}
+            </button>
 
             {detail.derivation && (
               <p className="mb-4 text-xs text-text-dim">

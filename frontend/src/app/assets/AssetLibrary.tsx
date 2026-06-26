@@ -13,6 +13,7 @@ import {
   PackageIcon,
   MusicNotesIcon,
   WarningIcon,
+  StarIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
@@ -647,6 +648,15 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
                     {!selecting && (
                       <span className="absolute left-1.5 top-1.5 rounded-[6px] bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur">
                         {a.source_kind}
+                      </span>
+                    )}
+
+                    {!selecting && a.exemplar && (
+                      <span
+                        className="absolute bottom-1.5 left-1.5 z-10 grid size-5 place-items-center rounded-[6px] bg-amber-400/85 text-bg"
+                        title="Style exemplar — conditions new generations"
+                      >
+                        <StarIcon size={12} weight="fill" />
                       </span>
                     )}
 

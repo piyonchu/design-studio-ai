@@ -131,6 +131,7 @@ export interface Asset {
   source_kind: string // 'uploaded' | 'seeded' | 'derived'
   derivation: string | null // for derivatives: the preset/instruction used
   canon_version_id: string | null
+  exemplar: boolean // approved style anchor — conditions future generation
   created_at: string
 }
 
@@ -178,8 +179,11 @@ export const setAssetStatus = (assetId: string, status: AssetStatus) =>
 /** One asset with its lineage (base + derivatives). */
 export const getAsset = (id: string) => request<AssetDetail>(`/assets/${id}`)
 
-/** Patch editable metadata (name / role / tags). Only provided fields change. */
-export const updateAsset = (id: string, patch: { name?: string; role?: string; tags?: string[] }) =>
+/** Patch editable metadata. Only provided fields change. */
+export const updateAsset = (
+  id: string,
+  patch: { name?: string; role?: string; tags?: string[]; exemplar?: boolean },
+) =>
   request<Asset>(`/assets/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
