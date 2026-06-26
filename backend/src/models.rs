@@ -143,6 +143,10 @@ pub struct Asset {
     pub tags: Vec<String>,
     /// How the asset entered the library: 'uploaded' | 'seeded' | 'derived'.
     pub source_kind: String,
+    /// For derivatives: the preset/instruction used, and the canon version it
+    /// was produced under (null for uploaded/seeded assets).
+    pub derivation: Option<String>,
+    pub canon_version_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     /// Stable, browser-usable URL for the image. Not stored — filled in by the
     /// route after fetching (see `routes::assets`). For object-stored assets
@@ -157,4 +161,16 @@ pub struct GenerateAssets {
     pub prompt: String,
     #[serde(default)]
     pub count: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeriveAssets {
+    pub instruction: String,
+    #[serde(default)]
+    pub count: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateAssetStatus {
+    pub status: AssetStatus,
 }

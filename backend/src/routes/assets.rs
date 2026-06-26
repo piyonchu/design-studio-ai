@@ -2,27 +2,30 @@ use axum::body::{Body, Bytes};
 use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use base64::Engine;
 use serde::Deserialize;
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::ai;
 use crate::auth::{self, AuthUser};
 use crate::error::AppError;
-use crate::models::{Asset, GenerateAssets, WorkspaceRole};
+use crate::models::{Asset, DeriveAssets, GenerateAssets, UpdateAssetStatus, WorkspaceRole};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/projects/:project_id/assets", get(list).post(generate))
         .route("/projects/:project_id/assets/upload", post(upload))
+        .route("/projects/:project_id/assets/:base_id/derive", post(derive))
+        .route("/assets/:id", patch(set_status))
         .route("/assets/:id/file", get(file))
 }
 
 const ASSET_COLS: &str =
-    "id, project_id, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, created_at";
+    "id, project_id, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, created_at";
 
 /// 10 MB cap on a single uploaded asset.
 const MAX_UPLOAD: usize = 10 * 1024 * 1024;
@@ -151,6 +154,170 @@ async fn list(
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(rows.into_iter().map(with_url).collect()))
+}
+
+/// Derive N images from a base asset, conditioned on the base + current canon.
+/// Each derivative records `source_kind='derived'`, a `derived_from` edge to the
+/// base, and the canon version it was made under.
+async fn derive(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path((project_id, base_id)): Path<(Uuid, Uuid)>,
+    Json(body): Json<DeriveAssets>,
+) -> Result<(StatusCode, Json<Vec<Asset>>), AppError> {
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
+    let count = body.count.unwrap_or(1).clamp(1, 4);
+    let instruction = body.instruction.trim();
+    if instruction.is_empty() {
+        return Err(AppError::BadRequest("instruction required".into()));
+    }
+
+    // Load the base (must belong to this project) and its bytes.
+    let base: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT s3_key, mime_type FROM assets WHERE id = $1 AND project_id = $2",
+    )
+    .bind(base_id)
+    .bind(project_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (base_key, base_mime) = base.ok_or(AppError::NotFound)?;
+    let (base_bytes, base_mime) = asset_bytes(&state, &base_key, base_mime.as_deref()).await?;
+
+    // Compile the prompt from the instruction + current canon (style + negatives).
+    let canon: Option<(Uuid, Value)> = sqlx::query_as(
+        "SELECT id, data FROM canon WHERE project_id = $1 ORDER BY version DESC LIMIT 1",
+    )
+    .bind(project_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (canon_id, prompt) = match canon {
+        Some((id, data)) => (Some(id), compile_prompt(instruction, &data)),
+        None => (None, instruction.to_string()),
+    };
+
+    let mut out = Vec::with_capacity(count as usize);
+    for n in 0..count as usize {
+        let img = ai::images::derive_image(&base_bytes, &base_mime, &prompt, n).await?;
+        let s3_key = if state.storage.configured() {
+            let key = format!("projects/{project_id}/assets/{}", Uuid::new_v4());
+            state.storage.put(&key, &img.bytes, &img.mime).await?;
+            key
+        } else {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&img.bytes);
+            format!("data:{};base64,{b64}", img.mime)
+        };
+        let asset = sqlx::query_as::<_, Asset>(&format!(
+            "INSERT INTO assets
+               (project_id, kind, s3_key, mime_type, prompt, source_kind, derivation, canon_version_id)
+             VALUES ($1, 'image', $2, $3, $4, 'derived', $5, $6) RETURNING {ASSET_COLS}"
+        ))
+        .bind(project_id)
+        .bind(&s3_key)
+        .bind(&img.mime)
+        .bind(&prompt)
+        .bind(instruction)
+        .bind(canon_id)
+        .fetch_one(&state.pool)
+        .await?;
+        // Provenance edge: derivative -> base.
+        sqlx::query(
+            "INSERT INTO asset_links (from_asset, to_asset, relation) VALUES ($1, $2, 'derived_from')",
+        )
+        .bind(asset.id)
+        .bind(base_id)
+        .execute(&state.pool)
+        .await?;
+        out.push(with_url(asset));
+    }
+    Ok((StatusCode::CREATED, Json(out)))
+}
+
+/// Approve / reject / flag a candidate — the consistency-review gate. Only
+/// approved assets should influence future derivations.
+async fn set_status(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateAssetStatus>,
+) -> Result<Json<Asset>, AppError> {
+    let project_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT project_id FROM assets WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let project_id = project_id.ok_or(AppError::NotFound)?;
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
+
+    let asset = sqlx::query_as::<_, Asset>(&format!(
+        "UPDATE assets SET status = $1 WHERE id = $2 RETURNING {ASSET_COLS}"
+    ))
+    .bind(body.status)
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await?;
+    Ok(Json(with_url(asset)))
+}
+
+/// Load an asset's raw bytes to use as a derivation reference: object storage by
+/// key, or an inline `data:` URL decoded in place.
+async fn asset_bytes(
+    state: &AppState,
+    s3_key: &str,
+    mime: Option<&str>,
+) -> Result<(Vec<u8>, String), AppError> {
+    if let Some(rest) = s3_key.strip_prefix("data:") {
+        let (meta, payload) = rest
+            .split_once(',')
+            .ok_or_else(|| AppError::Internal("malformed stored data URL".into()))?;
+        let m = meta
+            .split(';')
+            .next()
+            .filter(|x| !x.is_empty())
+            .map(str::to_string)
+            .or_else(|| mime.map(str::to_string))
+            .unwrap_or_else(|| "image/png".to_string());
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(payload)
+            .map_err(|e| AppError::Internal(format!("base decode failed: {e}")))?;
+        Ok((bytes, m))
+    } else if is_inline(s3_key) {
+        Err(AppError::ServiceUnavailable(
+            "base is a remote URL; cannot derive from it".into(),
+        ))
+    } else {
+        let bytes = state.storage.get(s3_key).await?;
+        Ok((bytes, mime.unwrap_or("image/png").to_string()))
+    }
+}
+
+/// Build a derivation prompt: instruction + the canon's style rules + negatives.
+fn compile_prompt(instruction: &str, canon: &Value) -> String {
+    let style = canon
+        .get("style")
+        .and_then(Value::as_object)
+        .map(|o| {
+            o.values()
+                .filter_map(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    let negative = canon
+        .get("negative")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("; "))
+        .unwrap_or_default();
+
+    let mut p = instruction.trim().to_string();
+    if !style.is_empty() {
+        p.push_str(&format!(" Maintain this exact art style: {style}."));
+    }
+    p.push_str(" One centered isolated asset, transparent background.");
+    if !negative.is_empty() {
+        p.push_str(&format!(" Must NOT include: {negative}."));
+    }
+    p
 }
 
 /// Stream an asset's image bytes. Stable, same-origin URL safe to embed in a
