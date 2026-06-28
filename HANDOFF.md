@@ -63,6 +63,12 @@ Open http://localhost:5173 → sign up → open a project.
 - `frontend/src/lib/api.ts` — typed API client (one place for all endpoints).
 - `frontend/src/app/` — `WorkspaceHub`, `ProjectWorkspace` (left-rail nav: Board/Canon/Review/Lineage/Collections/Activity), `assets/AssetLibrary` + `AssetInspector` + `ReviewQueue` + `CommentThread` + `LineageView` + `ActivityView`, `canon/CanonView` + `canon/ContextAsk`, `collections/CollectionsView`, `export/ExportDialog`.
 
+## Persistence (where everything lands)
+- **Metadata** (projects, assets, canon, comments, collections, recipes, jobs, lineage, prompts) → **Postgres** (local docker volume `db_data`).
+- **Asset bytes** (generated / derived / uploaded images, audio) → **MinIO/S3** (local volume `minio_data`) when `S3_BUCKET` is set, else **inline data-URL in Postgres**.
+- **AI text calls** (LLM answers, embeddings) → content-addressed disk cache `backend/.ai-cache/` (identical calls never re-pay).
+- **Local mirror (optional):** set `ASSET_MIRROR_DIR` → every asset is *also* written to `<dir>/<project_id>/<asset_id>.<ext>` as a plain browsable file (`src/mirror.rs`, best-effort, gitignored). So creations live in the DB and on local disk simultaneously.
+
 ## Conventions
 - **Branch per PR**, ~3 logical commits, merge with `--merge` (no squash unless asked). End commits with the Co-Authored-By trailer.
 - Verify every change: `cargo build` + `cargo test` + a curl smoke test (backend), `tsc -b` + `npm run build` (frontend).

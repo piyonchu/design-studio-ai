@@ -153,6 +153,7 @@ pub(crate) async fn run_generate(
         .bind(&exemplar_meta)
         .fetch_one(&state.pool)
         .await?;
+        crate::mirror::save(project_id, asset.id, &img.mime, &img.bytes);
         ai::embeddings::index_asset_soft(&state.pool, &asset).await;
         assets.push(with_url(asset));
     }
@@ -210,6 +211,7 @@ async fn upload(
     .bind(&params.role)
     .fetch_one(&state.pool)
     .await?;
+    crate::mirror::save(project_id, asset.id, &mime, &body);
     ai::embeddings::index_asset_soft(&state.pool, &asset).await;
     Ok((StatusCode::CREATED, Json(with_url(asset))))
 }
@@ -302,6 +304,7 @@ async fn derive(
         .bind(base_id)
         .execute(&state.pool)
         .await?;
+        crate::mirror::save(project_id, asset.id, &img.mime, &img.bytes);
         ai::embeddings::index_asset_soft(&state.pool, &asset).await;
         out.push(with_url(asset));
     }
