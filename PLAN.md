@@ -152,3 +152,9 @@ Reuse is a bonus (clean rebuild is acceptable), but most plumbing maps directly:
 ## 11. Naming
 
 The concept spanning every vertical is the **canon / reference memory**, so lead with it: **CanonForge** (alts: *Canon*, *Loom*). Launch on the wedge — *"Bring one sprite, get the whole consistent set, export to your engine"* — with the core ready to grow into manhwa, illustration, and marketing imagery.
+
+## 12. Status & deployment (as built)
+
+The plan above is **built**: the soft-moat core (reference derivation, asset management, versioning, collaboration, RAG) *and* the sticky wedge — the **exemplar/canon feedback loop** (approved assets condition future generation; the moat §2 calls for) plus **engine export** (Godot 4 + Unity, behind a per-vertical `engines` hook). Verticals: game_2d, manhwa, illustration, marketing. Commercialization: async job queue, OpenRouter usage visibility, hardening.
+
+**Deployment** lives in **[DEPLOY.md](DEPLOY.md)**: cheapest scale-to-zero is **Cloud Run** (`min-instances=0`, honors `$PORT`; `Dockerfile` at repo root) + **Neon** (Postgres+pgvector, also scales to zero) + **Cloud Scheduler** driving `POST /internal/jobs/drain` (`JOBS_WORKER=false`), inline storage for demos — ≈$0 idle, pay only OpenRouter per generation.

@@ -52,6 +52,7 @@ async fn generate(
         .bind(json!({ "duration_ms": clip.duration_ms }))
         .fetch_one(&state.pool)
         .await?;
+        crate::mirror::save(project_id, asset.id, &clip.mime, &clip.bytes);
         ai::embeddings::index_asset_soft(&state.pool, &asset).await;
         assets.push(with_url(asset));
     }

@@ -19,3 +19,5 @@ node_modules/
 .vscode/
 /.ai-cache/
 backend/.ai-cache/
+/.asset-mirror/
+backend/.asset-mirror/

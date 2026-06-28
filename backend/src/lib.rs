@@ -8,6 +8,7 @@ pub mod db;
 pub mod error;
 pub mod export;
 pub mod jobs;
+pub mod mirror;
 pub mod models;
 pub mod moderation;
 pub mod ratelimit;

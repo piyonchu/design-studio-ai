@@ -74,6 +74,10 @@ all decision/spend-gated — confirm before starting:
   **production hardening ✅** (env CORS allowlist, security headers, prompt
   content denylist). Remaining: dev-token password-reset / email-verify (its own
   auth feature + migration — deferred). Decisions captured 2026-06-27.
+- **Deploy ✅ (documented)** — `Dockerfile` + **[DEPLOY.md](DEPLOY.md)**: Cloud Run
+  (`min-instances=0`, `$PORT`) + Neon (pgvector) + Cloud Scheduler →
+  `POST /internal/jobs/drain` for scale-to-zero async jobs (`JOBS_WORKER=false`).
+  Inline storage for demos. ~$0 idle.
 - **Animation** (frame sequences) — own spike, real-model spend.
 - **Pixel-CLIP visual embedder** — swaps behind `embed_text`; shared-key spend.
 - **Commercialization track** — async gen queue, billing/quotas, deploy,
