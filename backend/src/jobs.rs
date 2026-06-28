@@ -100,6 +100,29 @@ async fn run(state: &AppState, job: Job) {
     }
 }
 
+/// Process up to `max` queued jobs and return how many ran. This is the
+/// request-driven counterpart to the polling worker: on a scale-to-zero host
+/// (e.g. Cloud Run, where a background loop can't run between requests) a
+/// scheduler hits an endpoint that calls this. Safe to run concurrently with
+/// the worker (both claim via `SKIP LOCKED`).
+pub async fn drain(state: &AppState, max: usize) -> usize {
+    let mut done = 0;
+    for _ in 0..max {
+        match claim(&state.pool).await {
+            Ok(Some(job)) => {
+                run(state, job).await;
+                done += 1;
+            }
+            Ok(None) => break,
+            Err(e) => {
+                tracing::error!(error = %e, "job claim failed during drain");
+                break;
+            }
+        }
+    }
+    done
+}
+
 /// Spawn the background worker. Drains queued jobs serially, polling every
 /// [`POLL`] when idle. Call once after building `AppState`.
 pub fn spawn_worker(state: AppState) {

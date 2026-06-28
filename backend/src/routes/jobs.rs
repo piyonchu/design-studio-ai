@@ -1,8 +1,8 @@
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde_json::json;
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::auth::{self, AuthUser};
@@ -15,6 +15,27 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/projects/:project_id/jobs", post(enqueue).get(list))
         .route("/jobs/:job_id", get(get_one))
+        // Machine endpoint (Cloud Scheduler / cron) — distinct prefix so it
+        // never collides with `/jobs/:job_id`.
+        .route("/internal/jobs/drain", post(drain))
+}
+
+/// Drain queued jobs on demand — for scale-to-zero hosts where the in-process
+/// worker can't run between requests, a scheduler calls this every minute.
+/// Guarded by a shared secret (`JOBS_DRAIN_SECRET`); 404 when unset so the
+/// endpoint is inert unless deliberately enabled.
+async fn drain(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AppError> {
+    let secret = std::env::var("JOBS_DRAIN_SECRET")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or(AppError::NotFound)?;
+    let provided = headers.get("x-drain-secret").and_then(|v| v.to_str().ok()).unwrap_or("");
+    // Constant-ish comparison is overkill for a deploy secret; a plain check is fine.
+    if provided != secret {
+        return Err(AppError::Unauthorized);
+    }
+    let processed = jobs::drain(&state, 25).await;
+    Ok(Json(json!({ "processed": processed })))
 }
 
 /// Enqueue an async generation. Returns the `queued` job immediately; the

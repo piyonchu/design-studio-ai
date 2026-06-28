@@ -1,0 +1,9 @@
+**/target
+**/node_modules
+frontend/dist
+.git
+.env
+*.md
+spikes
+design-screens
+backend/.ai-cache
