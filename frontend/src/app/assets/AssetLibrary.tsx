@@ -823,13 +823,12 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
               {displayed.map((a) => {
                 const isSel = selected.has(a.id)
                 const isBase = !selecting && a.id === baseId
-                // Multi-select uses a distinct hue (sky) so it reads differently
-                // from selecting a derive base (teal).
-                const ring = isSel
+                // Selection uses sky (multi-select and derive base are separate
+                // modes, never shown together) — distinct from the status rings
+                // (approved=teal, candidate=amber, needs_review=rose).
+                const ring = isSel || isBase
                   ? 'ring-2 ring-sky-400'
-                  : isBase
-                    ? 'ring-2 ring-teal'
-                    : STATUS_RING[a.status]
+                  : STATUS_RING[a.status]
                 return (
                   <figure
                     key={a.id}
