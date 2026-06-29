@@ -446,7 +446,7 @@ export interface Job {
   finished_at: string | null
 }
 /** Enqueue an async generation; returns the queued job to poll. */
-export const enqueueGenerate = (projectId: string, prompt: string, count = 2) =>
+export const enqueueGenerate = (projectId: string, prompt: string, count = 1) =>
   request<Job>(`/projects/${projectId}/jobs`, {
     method: 'POST',
     body: JSON.stringify({ prompt, count }),

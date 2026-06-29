@@ -293,13 +293,13 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     try {
       if (genMode === 'audio') {
         // Audio stays synchronous (no async job kind yet).
-        const created = await api.generateAudio(projectId, p, 2)
+        const created = await api.generateAudio(projectId, p, 1)
         setAssets((a) => [...created, ...a])
         bumpFacets()
       } else {
         // Image generation runs as a background job: enqueue, then watch it
         // finish and refresh the board (the JobsBanner shows progress).
-        const job = await api.enqueueGenerate(projectId, p, 2)
+        const job = await api.enqueueGenerate(projectId, p, 1)
         watchJob(job.id)
       }
       setPrompt('')
@@ -342,7 +342,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     setBusy(true)
     setError(null)
     try {
-      const created = await api.deriveAssets(projectId, baseId, ins, 2)
+      const created = await api.deriveAssets(projectId, baseId, ins, 1)
       setAssets((a) => [...created, ...a])
       bumpFacets()
     } catch (err) {
