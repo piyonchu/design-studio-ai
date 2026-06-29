@@ -823,7 +823,13 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
               {displayed.map((a) => {
                 const isSel = selected.has(a.id)
                 const isBase = !selecting && a.id === baseId
-                const ring = isSel || isBase ? 'ring-2 ring-teal' : STATUS_RING[a.status]
+                // Multi-select uses a distinct hue (sky) so it reads differently
+                // from selecting a derive base (teal).
+                const ring = isSel
+                  ? 'ring-2 ring-sky-400'
+                  : isBase
+                    ? 'ring-2 ring-teal'
+                    : STATUS_RING[a.status]
                 return (
                   <figure
                     key={a.id}
@@ -849,7 +855,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
                     {selecting && (
                       <span
                         className={`absolute left-1.5 top-1.5 grid size-5 place-items-center rounded-[6px] border transition ${
-                          isSel ? 'border-teal bg-teal text-bg' : 'border-white/50 bg-black/40 text-transparent'
+                          isSel ? 'border-sky-400 bg-sky-400 text-bg' : 'border-white/50 bg-black/40 text-transparent'
                         }`}
                       >
                         <CheckIcon size={12} weight="bold" />
