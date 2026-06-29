@@ -244,13 +244,10 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
   }
 
   function genError(err: unknown) {
-    setError(
-      err instanceof ApiError && err.status === 503
-        ? 'Image generation unavailable. (Set OPENROUTER_API_KEY, or ASSET_MOCK=true.)'
-        : err instanceof ApiError
-          ? err.message
-          : 'Request failed.',
-    )
+    // Surface the server's message — already user-readable and specific:
+    // not-configured (503), the cost guardrail (503 credit floor / 429 daily
+    // cap), or content policy (400). A generic fallback otherwise.
+    setError(err instanceof ApiError ? err.message : 'Request failed.')
   }
 
   // Poll a generation job to completion (non-blocking), then refresh the board.
