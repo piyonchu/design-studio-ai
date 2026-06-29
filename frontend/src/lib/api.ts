@@ -159,7 +159,7 @@ export interface Asset {
   project_id: string
   name: string | null // explicit display name; null → derive from role/prompt
   kind: string
-  s3_key: string // object-storage key (or data/http URL in inline mode)
+  s3_key?: string // not sent by the API; use `url`. Kept for type compat.
   url: string // stable, browser-usable image URL — use for <img src> / props.src
   mime_type: string | null
   prompt: string | null

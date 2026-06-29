@@ -174,6 +174,9 @@ pub struct Asset {
     pub name: Option<String>,
     pub kind: AssetKind,
     /// Object-storage key (S3/MinIO), or a `data:`/`http` URL in inline mode.
+    /// Not serialized: it can be a multi-MB inline data URL, and clients use
+    /// `url` (the file proxy) instead — keeps list/lineage payloads small.
+    #[serde(skip_serializing)]
     pub s3_key: String,
     pub mime_type: Option<String>,
     pub prompt: Option<String>,
