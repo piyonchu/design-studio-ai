@@ -34,11 +34,10 @@ const MAX_UPLOAD: usize = 10 * 1024 * 1024;
 /// Fill in the browser-usable `url` for an asset. Object-stored assets are
 /// served through our authed proxy; inline assets carry the URL directly.
 pub(crate) fn with_url(mut a: Asset) -> Asset {
-    a.url = if is_inline(&a.s3_key) {
-        a.s3_key.clone()
-    } else {
-        format!("/api/assets/{}/file", a.id)
-    };
+    // Always serve through the file proxy — for object-stored AND inline
+    // (data-URL) assets. Inlining the data URL into list/lineage responses
+    // would balloon them past Cloud Run's 32 MB response cap with real images.
+    a.url = format!("/api/assets/{}/file", a.id);
     a
 }
 
