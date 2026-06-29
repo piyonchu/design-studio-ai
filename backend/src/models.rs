@@ -194,6 +194,9 @@ pub struct Asset {
     /// Home folder in the project's tree; null = project root (unfiled).
     #[sqlx(default)]
     pub folder_id: Option<Uuid>,
+    /// Head version pointer (A2). Null only on pre-versioning legacy rows.
+    #[sqlx(default)]
+    pub current_version_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     /// Stable, browser-usable URL for the image. Not stored — filled in by the
     /// route after fetching (see `routes::assets`). For object-stored assets
@@ -318,6 +321,39 @@ pub struct AssetDetail {
     pub asset: Asset,
     pub base: Option<Asset>,
     pub derivatives: Vec<Asset>,
+}
+
+// ── Asset versions (per-asset history) ────────────────────────────────────────
+
+/// One entry in an asset's version history. `s3_key` is intentionally not
+/// serialized (it can be a multi-MB inline data URL); clients load bytes via
+/// `url` (the file proxy with `?version=`). `author_email` is joined for display.
+#[derive(Debug, Serialize, FromRow)]
+pub struct AssetVersion {
+    pub id: Uuid,
+    pub asset_id: Uuid,
+    pub version: i32,
+    #[serde(skip_serializing)]
+    pub s3_key: String,
+    pub mime_type: Option<String>,
+    pub prompt: Option<String>,
+    pub change_note: Option<String>,
+    pub created_by: Option<Uuid>,
+    #[sqlx(default)]
+    pub author_email: Option<String>,
+    pub created_at: DateTime<Utc>,
+    /// Stable, browser-usable URL for this version's bytes — filled in by the
+    /// route (`GET /assets/:id/file?version=:vid`). Not stored.
+    #[sqlx(default)]
+    pub url: String,
+}
+
+/// Regenerate an asset into a new version. Optional new prompt; absent → reuse
+/// the asset's current prompt.
+#[derive(Debug, Deserialize)]
+pub struct RegenerateAsset {
+    #[serde(default)]
+    pub prompt: Option<String>,
 }
 
 // ── Collections ───────────────────────────────────────────────────────────────

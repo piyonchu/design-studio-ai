@@ -394,3 +394,111 @@ async fn folders_tree_move_and_cascade() {
     let asset: serde_json::Value = serde_json::from_slice(&b).unwrap();
     assert!(asset["folder_id"].is_null(), "asset survived, unfiled");
 }
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn asset_versions_regenerate_and_restore() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("AUDIO_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    // signup → workspace → project
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"Versions\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    // generate → asset starts at v1 with a head pointer
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/assets"),
+        Some(&cookie),
+        Some("{\"prompt\":\"a wizard\",\"count\":1}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "generate");
+    let asset: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    let aid = asset[0]["id"].as_str().unwrap().to_owned();
+    assert!(asset[0]["current_version_id"].is_string(), "head set on generate");
+
+    let versions = |router: axum::Router, cookie: String, aid: String| async move {
+        let (_st, b, _) = send(&router, "GET", &format!("/assets/{aid}/versions"), Some(&cookie), None).await;
+        serde_json::from_slice::<serde_json::Value>(&b).unwrap()
+    };
+
+    let v = versions(router.clone(), cookie.clone(), aid.clone()).await;
+    assert_eq!(v.as_array().unwrap().len(), 1, "one version after generate");
+    let v1_id = v[0]["id"].as_str().unwrap().to_owned();
+
+    // regenerate → v2, attributed, "Regenerated"
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/regenerate"),
+        Some(&cookie),
+        Some("{\"prompt\":\"a wizard, blue robe\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "regenerate");
+    let v = versions(router.clone(), cookie.clone(), aid.clone()).await;
+    assert_eq!(v.as_array().unwrap().len(), 2, "two versions");
+    assert_eq!(v[0]["version"], 2);
+    assert_eq!(v[0]["change_note"], "Regenerated");
+    assert_eq!(v[0]["author_email"], email, "version attributed to author");
+
+    // a specific version's bytes are servable and differ from the head
+    let (st, head_bytes, _) = send(&router, "GET", &format!("/assets/{aid}/file"), Some(&cookie), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, v1_bytes, _) =
+        send(&router, "GET", &format!("/assets/{aid}/file?version={v1_id}"), Some(&cookie), None).await;
+    assert_eq!(st, StatusCode::OK, "historical version servable");
+    assert_ne!(head_bytes, v1_bytes, "head (v2) differs from v1");
+
+    // restore v1 → appends v3 whose bytes equal v1 (non-destructive rollback)
+    let (st, _b, _) =
+        send(&router, "POST", &format!("/assets/{aid}/versions/{v1_id}/restore"), Some(&cookie), None).await;
+    assert_eq!(st, StatusCode::OK, "restore");
+    let v = versions(router.clone(), cookie.clone(), aid.clone()).await;
+    assert_eq!(v.as_array().unwrap().len(), 3, "restore appended a version");
+    assert_eq!(v[0]["version"], 3);
+    assert_eq!(v[0]["change_note"], "Restored v1");
+    let (_st, restored_bytes, _) = send(&router, "GET", &format!("/assets/{aid}/file"), Some(&cookie), None).await;
+    assert_eq!(restored_bytes, v1_bytes, "head now matches the restored v1 bytes");
+
+    // a bogus version id 404s
+    let (st, _b, _) = send(
+        &router,
+        "GET",
+        &format!("/assets/{aid}/file?version=00000000-0000-0000-0000-000000000000"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "unknown version → 404");
+}

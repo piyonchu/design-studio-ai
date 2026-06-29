@@ -59,6 +59,8 @@ async fn enqueue(
     let payload = json!({
         "prompt": body.prompt,
         "count": count,
+        // Attribute the resulting v1 versions to the requester (A2).
+        "created_by": user.id,
     });
     let job = jobs::enqueue(&state.pool, project_id, "generate", payload).await?;
     Ok((StatusCode::CREATED, Json(job)))

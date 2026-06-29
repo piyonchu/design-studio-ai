@@ -79,10 +79,15 @@ async fn run(state: &AppState, job: Job) {
         "generate" => {
             let prompt = job.payload.get("prompt").and_then(Value::as_str).unwrap_or("");
             let count = job.payload.get("count").and_then(Value::as_u64).unwrap_or(1) as u32;
+            let created_by = job
+                .payload
+                .get("created_by")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<Uuid>().ok());
             if prompt.trim().is_empty() {
                 Err(AppError::BadRequest("job payload missing 'prompt'".into()))
             } else {
-                crate::routes::run_generate(state, job.project_id, prompt, count).await
+                crate::routes::run_generate(state, job.project_id, prompt, count, created_by).await
             }
         }
         other => Err(AppError::BadRequest(format!("unknown job kind '{other}'"))),

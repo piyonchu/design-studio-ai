@@ -3,6 +3,7 @@ import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNo
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { CommentThread } from './CommentThread'
+import { VersionHistory } from './VersionHistory'
 
 /**
  * Asset inspector — a slide-over for one asset: preview, editable role/tags,
@@ -305,6 +306,16 @@ export function AssetInspector({
             ) : (
               <p className="mb-5 text-xs text-text-dim">No collections yet — create one in the Collections tab.</p>
             )}
+
+            <div className="mb-6 border-t border-white/8 pt-4">
+              <VersionHistory
+                asset={detail}
+                onChanged={(updated) => {
+                  setDetail((d) => (d ? { ...d, ...updated } : d))
+                  onChanged(updated)
+                }}
+              />
+            </div>
 
             <div className="flex items-center gap-1.5 border-t border-white/8 pt-3 text-xs text-text-dim">
               <TreeStructureIcon size={14} />

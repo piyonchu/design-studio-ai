@@ -171,6 +171,7 @@ export interface Asset {
   canon_version_id: string | null
   exemplar: boolean // approved style anchor — conditions future generation
   folder_id: string | null // home folder in the project tree; null = root
+  current_version_id: string | null // head version pointer (A2)
   created_at: string
 }
 
@@ -291,6 +292,35 @@ export function displayName(a: Asset): string {
 
 /** Delete an asset (its lineage edges cascade). */
 export const deleteAsset = (id: string) => request<void>(`/assets/${id}`, { method: 'DELETE' })
+
+// ── Asset versions (per-asset history) ────────────────────────────────────────
+export interface AssetVersion {
+  id: string
+  asset_id: string
+  version: number
+  url: string // bytes for this version (file proxy with ?version=)
+  mime_type: string | null
+  prompt: string | null
+  change_note: string | null
+  created_by: string | null
+  author_email: string | null
+  created_at: string
+}
+
+/** An asset's version history, newest first. */
+export const listVersions = (assetId: string) =>
+  request<AssetVersion[]>(`/assets/${assetId}/versions`)
+
+/** Roll back to a prior version — appends a copy as the new head (non-destructive). */
+export const restoreVersion = (assetId: string, versionId: string) =>
+  request<Asset>(`/assets/${assetId}/versions/${versionId}/restore`, { method: 'POST' })
+
+/** Regenerate the asset into a new version (optional new prompt; else reuse current). */
+export const regenerateAsset = (assetId: string, prompt?: string) =>
+  request<Asset>(`/assets/${assetId}/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify(prompt ? { prompt } : {}),
+  })
 
 /** Upload a base/reference image. Raw bytes body, not multipart. */
 export const uploadAsset = async (
