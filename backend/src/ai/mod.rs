@@ -1,8 +1,5 @@
-//! AI integration. Image generation (and, later, reference-conditioned
-//! derivation) lives behind this module so the transport can be swapped.
-//!
-//! The earlier text-DSL generation client (Anthropic Messages API for the
-//! UI-as-Code pipeline) was removed in the pivot to a visual asset studio.
+//! AI integration — image generation, dual text+visual embeddings, LLM
+//! synthesis, and usage tracking. Provider calls are swappable behind env flags.
 
 pub mod audio;
 pub mod cache;

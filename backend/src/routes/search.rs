@@ -3,10 +3,11 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use uuid::Uuid;
 
-use super::assets::{with_url, ASSET_COLS};
+use super::assets::{asset_bytes, with_url, ASSET_COLS};
 use crate::ai::embeddings;
 use crate::auth::{self, AuthUser};
 use crate::error::AppError;
+use crate::mirror;
 use crate::models::{Asset, ScoredAsset, SearchQuery, SimilarCheck, WorkspaceRole};
 use crate::AppState;
 
@@ -19,10 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/assets/:id/style-fit", get(style_fit))
 }
 
-/// How well an asset matches the project's *approved* style: the cosine
-/// similarity of its embedding to the nearest approved asset (0–1). A credible,
-/// embedding-based check to surface at review time (PLAN §6). `score` is null
-/// when the asset has no embedding or there are no other approved assets yet.
+/// How well an asset matches the project's *approved* style via pixel embedding.
 async fn style_fit(
     State(state): State<AppState>,
     user: AuthUser,
@@ -36,12 +34,13 @@ async fn style_fit(
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
 
     let row: Option<(f64, i64)> = sqlx::query_as(
-        "WITH q AS (SELECT embedding FROM visual_embeddings WHERE asset_id = $1)
-         SELECT MAX(1 - (e.embedding <=> q.embedding))::float8,
+        "WITH q AS (SELECT embedding_visual FROM visual_embeddings WHERE asset_id = $1)
+         SELECT MAX(1 - (e.embedding_visual <=> q.embedding_visual))::float8,
                 COUNT(*)::int8
          FROM visual_embeddings e
          JOIN assets a ON a.id = e.asset_id, q
-         WHERE a.project_id = $2 AND a.status = 'approved' AND a.id <> $1",
+         WHERE a.project_id = $2 AND a.status = 'approved' AND a.id <> $1
+           AND e.embedding_visual IS NOT NULL AND q.embedding_visual IS NOT NULL",
     )
     .bind(id)
     .bind(project_id)
@@ -55,35 +54,71 @@ async fn style_fit(
     Ok(Json(serde_json::json!({ "score": score, "basis": basis })))
 }
 
-/// Embed a query and cosine-rank the project's assets. `score = 1 - distance`
-/// (1.0 = identical). Assets with no embedding simply don't appear.
+#[derive(Clone, Copy)]
+enum RankMode {
+    /// Board search — fuse caption + cross-modal visual space.
+    Search,
+    /// Pre-generate dedup — emphasize caption similarity.
+    Dedup,
+}
+
+/// Embed a query and rank project assets. Fuses text + visual columns when both
+/// are present. `score` is in [0, 1] (1.0 = identical).
 async fn ranked(
     state: &AppState,
     project_id: Uuid,
     query_text: &str,
     limit: i64,
+    mode: RankMode,
 ) -> Result<Vec<ScoredAsset>, AppError> {
-    let Some(vec) = embeddings::embed_text(query_text, embeddings::VISUAL_DIM).await else {
-        return Ok(Vec::new());
+    let text_w = match mode {
+        RankMode::Dedup => 0.75,
+        RankMode::Search => 0.5,
     };
-    let pg = embeddings::to_pgvector(&vec);
+    let visual_w = 1.0 - text_w;
+
+    let text_q = embeddings::embed_text(query_text, embeddings::VISUAL_DIM).await;
+    let visual_q = if visual_w > 0.0 {
+        embeddings::embed_query_visual_space(query_text, embeddings::VISUAL_DIM).await
+    } else {
+        None
+    };
+
+    if text_q.is_none() && visual_q.is_none() {
+        return Ok(Vec::new());
+    }
+
+    let text_pg = text_q.as_ref().map(|v| embeddings::to_pgvector(v));
+    let visual_pg = visual_q.as_ref().map(|v| embeddings::to_pgvector(v));
+
     let rows = sqlx::query_as::<_, ScoredAsset>(
-        "SELECT assets.*, 1 - (e.embedding <=> $2::vector) AS score
+        "SELECT assets.*,
+                (
+                    COALESCE((1 - (e.embedding_text <=> $2::vector)) * $5::float8, 0)
+                  + COALESCE((1 - (e.embedding_visual <=> $3::vector)) * $6::float8, 0)
+                ) AS score
          FROM assets
          JOIN visual_embeddings e ON e.asset_id = assets.id
          WHERE assets.project_id = $1
-         ORDER BY e.embedding <=> $2::vector
-         LIMIT $3",
+           AND (
+                ($2::vector IS NOT NULL AND e.embedding_text IS NOT NULL)
+             OR ($3::vector IS NOT NULL AND e.embedding_visual IS NOT NULL)
+           )
+         ORDER BY score DESC
+         LIMIT $4",
     )
     .bind(project_id)
-    .bind(pg)
+    .bind(text_pg)
+    .bind(visual_pg)
     .bind(limit)
+    .bind(text_w)
+    .bind(visual_w)
     .fetch_all(&state.pool)
     .await?;
+
     Ok(rows.into_iter().map(|s| ScoredAsset { asset: with_url(s.asset), score: s.score }).collect())
 }
 
-/// Smart search: semantic / keyword over the asset library.
 async fn search(
     State(state): State<AppState>,
     user: AuthUser,
@@ -91,11 +126,9 @@ async fn search(
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<Vec<ScoredAsset>>, AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
-    Ok(Json(ranked(&state, project_id, &q.q, 40).await?))
+    Ok(Json(ranked(&state, project_id, &q.q, 40, RankMode::Search).await?))
 }
 
-/// Pre-generate dedup nudge: does something close to this prompt already exist?
-/// Returns only strong matches so the UI can warn "a similar asset already exists".
 async fn similar_check(
     State(state): State<AppState>,
     user: AuthUser,
@@ -103,13 +136,12 @@ async fn similar_check(
     Json(body): Json<SimilarCheck>,
 ) -> Result<Json<Vec<ScoredAsset>>, AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
-    let mut hits = ranked(&state, project_id, &body.prompt, 5).await?;
+    let mut hits = ranked(&state, project_id, &body.prompt, 5, RankMode::Dedup).await?;
     hits.retain(|s| s.score >= 0.6);
     Ok(Json(hits))
 }
 
-/// "Find visually similar" to a given asset (its nearest neighbours, excluding
-/// itself). Authorized via the asset's project.
+/// Nearest pixel neighbours of an asset (excludes itself).
 async fn similar(
     State(state): State<AppState>,
     user: AuthUser,
@@ -123,12 +155,13 @@ async fn similar(
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
 
     let rows = sqlx::query_as::<_, ScoredAsset>(
-        "SELECT assets.*, 1 - (e.embedding <=> q.embedding) AS score
+        "SELECT assets.*, 1 - (e.embedding_visual <=> q.embedding_visual) AS score
          FROM assets
          JOIN visual_embeddings e ON e.asset_id = assets.id
          JOIN visual_embeddings q ON q.asset_id = $1
          WHERE assets.project_id = $2 AND assets.id <> $1
-         ORDER BY e.embedding <=> q.embedding
+           AND e.embedding_visual IS NOT NULL AND q.embedding_visual IS NOT NULL
+         ORDER BY e.embedding_visual <=> q.embedding_visual
          LIMIT 12",
     )
     .bind(id)
@@ -138,8 +171,21 @@ async fn similar(
     Ok(Json(rows.into_iter().map(|s| ScoredAsset { asset: with_url(s.asset), score: s.score }).collect()))
 }
 
-/// Index every asset in the project that has no embedding yet (covers imports
-/// and anything created before the pipeline existed). Returns how many.
+async fn load_image_bytes(state: &AppState, asset: &Asset) -> Option<Vec<u8>> {
+    if !embeddings::is_image_asset(asset) {
+        return None;
+    }
+    if let Some((bytes, _)) = mirror::read_any(asset.project_id, asset.id) {
+        return Some(bytes);
+    }
+    if let Ok((bytes, _)) = asset_bytes(state, &asset.s3_key, asset.mime_type.as_deref()).await {
+        return Some(bytes);
+    }
+    None
+}
+
+/// Index every image asset missing a text or visual embedding (covers imports,
+/// legacy rows, and deploy mirror re-import).
 async fn backfill(
     State(state): State<AppState>,
     user: AuthUser,
@@ -147,15 +193,23 @@ async fn backfill(
 ) -> Result<Json<serde_json::Value>, AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
     let assets = sqlx::query_as::<_, Asset>(&format!(
-        "SELECT {ASSET_COLS} FROM assets
-         WHERE project_id = $1 AND id NOT IN (SELECT asset_id FROM visual_embeddings)"
+        "SELECT {ASSET_COLS} FROM assets a
+         WHERE a.project_id = $1 AND a.kind <> 'audio'
+           AND (
+                a.id NOT IN (SELECT asset_id FROM visual_embeddings)
+             OR a.id IN (
+                    SELECT asset_id FROM visual_embeddings
+                    WHERE embedding_text IS NULL OR embedding_visual IS NULL
+                )
+           )"
     ))
     .bind(project_id)
     .fetch_all(&state.pool)
     .await?;
     let mut indexed = 0;
     for a in &assets {
-        embeddings::index_asset(&state.pool, a.id, &embeddings::caption_from(a)).await?;
+        let bytes = load_image_bytes(&state, a).await;
+        embeddings::index_asset_with_bytes(&state.pool, a, bytes.as_deref()).await?;
         indexed += 1;
     }
     Ok(Json(serde_json::json!({ "indexed": indexed })))
