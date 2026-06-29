@@ -94,6 +94,36 @@ and `--min-instances 1` instead — simpler, but no longer scale-to-zero.)
 4. Log in as the second user → you both see the shared workspace; comments,
    review, and roles are live. Set a display name in the account menu.
 
+## Optional upgrade: object storage (Cloudflare R2)
+
+Today `S3_BUCKET` is unset → images are stored **inline as data-URLs in Neon**.
+That works (served via the `/assets/:id/file` proxy), but it consumes Neon's
+0.5 GB free storage fast with real images. Moving to **R2** keeps Neon lean and
+serves images from a CDN. **No code change** — the backend already speaks S3 via
+env vars; you just point it at R2 and redeploy.
+
+1. Cloudflare dashboard → **R2** → create bucket `canonforge-assets`, then
+   **Manage R2 API Tokens** → create an **S3-compatible** token (Access Key ID +
+   Secret). Note your account's R2 endpoint `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`.
+2. Store the R2 keys as secrets + redeploy with the storage env added:
+   ```bash
+   printf '%s' '<R2_ACCESS_KEY_ID>'     | gcloud secrets create r2-access-key --data-file=-
+   printf '%s' '<R2_SECRET_ACCESS_KEY>' | gcloud secrets create r2-secret-key --data-file=-
+   # grant the runtime SA access (same as the other secrets), then redeploy:
+   gcloud run deploy canonforge --source . --region asia-southeast1 --allow-unauthenticated \
+     --set-env-vars "...existing...,S3_BUCKET=canonforge-assets,AWS_REGION=auto,\
+   S3_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com,S3_PATH_STYLE=true" \
+     --set-secrets "...existing...,AWS_ACCESS_KEY_ID=r2-access-key:latest,AWS_SECRET_ACCESS_KEY=r2-secret-key:latest"
+   ```
+3. From then on, **new** assets go to R2 (short keys); **existing inline assets
+   keep working** (the file proxy still decodes their data-URLs). No migration
+   needed — optionally backfill old ones later.
+
+**Cost:** R2 is **10 GB storage free**, then $0.015/GB-mo, and crucially **$0
+egress** (unlike S3/GCS, which bill ~$0.09–0.12/GB to serve). For a demo/
+portfolio it's effectively **$0**. GCS works too but charges egress, so R2
+(same vendor as your Pages frontend) is the cheaper pairing.
+
 ## Notes / trade-offs
 - **Cold start:** first request after idle wakes Cloud Run (~1–2s).
 - **Storage:** `S3_BUCKET` unset → assets stored inline (data URLs) in Postgres —
