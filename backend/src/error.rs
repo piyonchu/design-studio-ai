@@ -15,6 +15,8 @@ pub enum AppError {
     Unauthorized,
     /// Authenticated but not permitted → 403.
     Forbidden,
+    /// Quota / rate guardrail tripped → 429.
+    TooManyRequests(String),
     /// Upstream dependency unavailable / not configured (e.g. AI) → 503.
     ServiceUnavailable(String),
     /// Unexpected internal error (DB, hashing, …) → 500.
@@ -30,6 +32,7 @@ impl std::fmt::Display for AppError {
             AppError::BadRequest(msg) => write!(f, "{msg}"),
             AppError::Unauthorized => write!(f, "unauthorized"),
             AppError::Forbidden => write!(f, "forbidden"),
+            AppError::TooManyRequests(msg) => write!(f, "{msg}"),
             AppError::ServiceUnavailable(msg) => write!(f, "{msg}"),
             AppError::Db(err) => write!(f, "database error: {err}"),
             AppError::Internal(msg) => write!(f, "internal error: {msg}"),
@@ -60,6 +63,7 @@ impl IntoResponse for AppError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden".to_string()),
+            AppError::TooManyRequests(msg) => (StatusCode::TOO_MANY_REQUESTS, msg),
             AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
             AppError::Db(err) => {
                 tracing::error!(%err, "unhandled database error");

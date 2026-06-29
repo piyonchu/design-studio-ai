@@ -27,6 +27,7 @@ async fn generate(
 ) -> Result<(StatusCode, Json<Vec<Asset>>), AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
     let count = body.count.unwrap_or(1).clamp(1, 4);
+    crate::guardrail::check_can_spend(&state, project_id, count).await?;
 
     let mut assets = Vec::with_capacity(count as usize);
     for n in 0..count as usize {

@@ -78,6 +78,7 @@ pub(crate) async fn run_generate(
 ) -> Result<Vec<Asset>, AppError> {
     crate::moderation::check_prompt(raw_prompt)?;
     let count = count.clamp(1, 4);
+    crate::guardrail::check_can_spend(state, project_id, count).await?;
 
     // Seed against the current canon so generated bases follow the project's
     // style from the start. The model gets the compiled prompt; the asset keeps
@@ -359,6 +360,7 @@ async fn derive(
     if instruction.is_empty() {
         return Err(AppError::BadRequest("instruction required".into()));
     }
+    crate::guardrail::check_can_spend(&state, project_id, count).await?;
 
     // Load the base (must belong to this project) and its bytes.
     let base: Option<(String, Option<String>)> = sqlx::query_as(
