@@ -196,6 +196,30 @@ pub struct UpdateAsset {
     pub exemplar: Option<bool>,
 }
 
+/// One keyset page of assets. `next_cursor` is an opaque token to pass back as
+/// `?cursor=` for the following page; null means this is the last page.
+#[derive(Debug, Serialize)]
+pub struct AssetPage {
+    pub items: Vec<Asset>,
+    pub next_cursor: Option<String>,
+}
+
+/// One `value → count` bucket for a filter facet.
+#[derive(Debug, Serialize, FromRow)]
+pub struct FacetCount {
+    pub value: String,
+    pub count: i64,
+}
+
+/// Per-project filter counts for the board's filter rail — computed over the
+/// whole project (not just the loaded page) so the counts stay accurate.
+#[derive(Debug, Serialize)]
+pub struct AssetFacets {
+    pub status: Vec<FacetCount>,
+    pub role: Vec<FacetCount>,
+    pub source: Vec<FacetCount>,
+}
+
 /// An asset plus its lineage: the base it was derived from, and its derivatives.
 #[derive(Debug, Serialize)]
 pub struct AssetDetail {
