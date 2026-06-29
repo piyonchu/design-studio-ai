@@ -32,8 +32,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface User {
   id: string
   email: string
+  display_name: string | null
   created_at: string
 }
+/** A person's name for display — username if set, else the email. */
+export const userName = (u: { display_name: string | null; email: string }) =>
+  u.display_name?.trim() || u.email
 export interface Workspace {
   id: string
   name: string
@@ -46,6 +50,7 @@ export interface Project {
   brief: string | null
   vertical: string // 'game_2d' | 'manhwa'
   created_at: string
+  deleted_at?: string | null // set when trashed
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -65,11 +70,44 @@ export const logout = () => request<void>('/auth/logout', { method: 'POST' })
 
 export const me = () => request<User>('/auth/me')
 
+/** Update the signed-in user's display name (username). Empty clears it. */
+export const updateProfile = (display_name: string) =>
+  request<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ display_name }) })
+
+// ── Team / workspace members ──────────────────────────────────────────────────
+export type Role = 'viewer' | 'editor' | 'owner'
+export interface WorkspaceMember {
+  user_id: string
+  email: string
+  display_name: string | null
+  role: Role
+}
+export const listMembers = (workspaceId: string) =>
+  request<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`)
+/** Invite an existing user by email (Owner-only). */
+export const inviteMember = (workspaceId: string, email: string, role: Role = 'editor') =>
+  request<WorkspaceMember>(`/workspaces/${workspaceId}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ email, role }),
+  })
+export const removeMember = (workspaceId: string, userId: string) =>
+  request<void>(`/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' })
+
 // ── Workspaces & projects ─────────────────────────────────────────────────────
 export const listWorkspaces = () => request<Workspace[]>('/workspaces')
 
 export const listProjects = (workspaceId: string) =>
   request<Project[]>(`/workspaces/${workspaceId}/projects`)
+
+/** Trashed (soft-deleted) projects for a workspace. */
+export const listTrash = (workspaceId: string) =>
+  request<Project[]>(`/workspaces/${workspaceId}/trash`)
+/** Move a project to the trash (soft delete). */
+export const deleteProject = (id: string) =>
+  request<void>(`/projects/${id}`, { method: 'DELETE' })
+/** Restore a trashed project. */
+export const restoreProject = (id: string) =>
+  request<Project>(`/projects/${id}/restore`, { method: 'POST' })
 
 export const createProject = (
   workspaceId: string,

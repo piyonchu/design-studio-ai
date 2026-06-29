@@ -7,6 +7,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  updateProfile: (displayName: string) => Promise<void>
 }
 
 const AuthCtx = createContext<AuthState | null>(null)
@@ -35,9 +36,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.logout()
     setUser(null)
   }
+  const updateProfile = async (displayName: string) => {
+    setUser(await api.updateProfile(displayName))
+  }
 
   return (
-    <AuthCtx.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthCtx.Provider value={{ user, loading, login, signup, logout, updateProfile }}>
       {children}
     </AuthCtx.Provider>
   )

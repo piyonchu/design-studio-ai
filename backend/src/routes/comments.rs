@@ -24,7 +24,7 @@ async fn asset_project(state: &AppState, asset_id: Uuid) -> Result<Uuid, AppErro
         .ok_or(AppError::NotFound)
 }
 
-const COMMENT_COLS: &str = "c.id, c.asset_id, c.author_id, u.email AS author_email, c.body, c.created_at";
+const COMMENT_COLS: &str = "c.id, c.asset_id, c.author_id, COALESCE(u.display_name, u.email) AS author_email, c.body, c.created_at";
 
 /// An asset's comment thread, oldest first.
 async fn list(

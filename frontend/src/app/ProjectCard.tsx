@@ -1,16 +1,39 @@
 import { useNavigate } from 'react-router-dom'
-import { SparkleIcon } from '@phosphor-icons/react'
+import { SparkleIcon, TrashIcon } from '@phosphor-icons/react'
 import type { Project } from '../lib/api'
 import { seededGradient } from '../lib/gradient'
 
-export function ProjectCard({ project }: { project: Project }) {
+export function ProjectCard({
+  project,
+  onDelete,
+}: {
+  project: Project
+  onDelete?: (id: string) => void
+}) {
   const navigate = useNavigate()
+  const open = () => navigate(`/projects/${project.id}`)
   return (
-    <button
-      onClick={() => navigate(`/projects/${project.id}`)}
-      className="glass group block w-full overflow-hidden rounded-[16px] text-left transition duration-200 hover:-translate-y-0.5 hover:ring-1 hover:ring-teal/40"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open()}
+      className="glass group relative block w-full cursor-pointer overflow-hidden rounded-[16px] text-left transition duration-200 hover:-translate-y-0.5 hover:ring-1 hover:ring-teal/40"
     >
-      {/* Seeded gradient tile (placeholder for rendered-DSL previews). */}
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(project.id)
+          }}
+          aria-label={`Move ${project.name} to trash`}
+          title="Move to trash"
+          className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-[8px] bg-black/40 text-text-dim opacity-0 backdrop-blur transition hover:text-rose-300 group-hover:opacity-100"
+        >
+          <TrashIcon size={15} />
+        </button>
+      )}
+      {/* Seeded gradient tile (placeholder for rendered-asset previews). */}
       <div
         className="relative aspect-[4/3] w-full"
         style={{ backgroundImage: seededGradient(project.id) }}
@@ -27,6 +50,6 @@ export function ProjectCard({ project }: { project: Project }) {
           </span>
         </div>
       </div>
-    </button>
+    </div>
   )
 }
