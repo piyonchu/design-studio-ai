@@ -37,6 +37,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | Engine adapters — **Godot 4 + Unity** import-ready packs (per-vertical `engines` hook, game_2d) | ✅ (Unity format-validated, not editor-tested) |
 | — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
 | — | Board pagination — keyset paging + server-side filters + facet counts | ✅ |
+| — | Cost guardrail — credit floor + per-workspace daily gen cap (env-tunable) | ✅ |
 
 ### Done — Phase 3.5 (visual intelligence, mock embeddings)
 Mock-first feature-hashed embedder (`ai/embeddings.rs`, `EMBED_MOCK` default) —
@@ -73,7 +74,8 @@ all decision/spend-gated — confirm before starting:
   editor-tested (licensed editor). Next engine = one `Engine` variant + a packer.
 - **Commercialization** — usage credit ✅, async generation queue ✅,
   **production hardening ✅** (env CORS allowlist, security headers, prompt
-  content denylist). Remaining: dev-token password-reset / email-verify (its own
+  content denylist), **cost guardrail ✅** (credit floor + per-workspace daily
+  gen cap, both env-tunable; real $-ledger is the follow-up). Remaining: dev-token password-reset / email-verify (its own
   auth feature + migration — deferred). Decisions captured 2026-06-27.
 - **Deploy ✅ (documented)** — `Dockerfile` + **[DEPLOY.md](DEPLOY.md)**: Cloud Run
   (`min-instances=0`, `$PORT`) + Neon (pgvector) + Cloud Scheduler →
