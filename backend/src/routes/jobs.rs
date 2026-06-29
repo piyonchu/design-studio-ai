@@ -53,9 +53,12 @@ async fn enqueue(
     // Reject disallowed prompts at enqueue for immediate feedback (the worker's
     // run_generate re-checks, so the gate holds regardless of entry point).
     crate::moderation::check_prompt(&body.prompt)?;
+    let count = body.count.unwrap_or(1).clamp(1, 4);
+    // Fast-fail the guardrail at enqueue (the worker's run_generate re-checks).
+    crate::guardrail::check_can_spend(&state, project_id, count).await?;
     let payload = json!({
         "prompt": body.prompt,
-        "count": body.count.unwrap_or(1).clamp(1, 4),
+        "count": count,
     });
     let job = jobs::enqueue(&state.pool, project_id, "generate", payload).await?;
     Ok((StatusCode::CREATED, Json(job)))
