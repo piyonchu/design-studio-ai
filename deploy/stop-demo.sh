@@ -7,9 +7,10 @@
 cd "$(dirname "$0")/.."
 source deploy/config.sh
 
-# Remove public access (anonymous requests get 403) and pin to zero instances.
-gcloud run services update "$SERVICE" --region "$REGION" \
-  --no-allow-unauthenticated --min-instances 0 >/dev/null
+# Remove public access via IAM (anonymous requests get 403). The service + its
+# built image stay; min-instances is already 0 so idle cost is ~$0.
+gcloud run services remove-iam-policy-binding "$SERVICE" --region "$REGION" \
+  --member=allUsers --role=roles/run.invoker >/dev/null 2>&1 || true
 echo "⏹  demo stopped — $SERVICE is no longer public (image kept; ~\$0 idle)."
 echo "   Run ./deploy/start-demo.sh to bring it back. (Hard teardown:"
 echo "   gcloud run services delete $SERVICE --region $REGION)"
