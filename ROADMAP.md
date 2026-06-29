@@ -41,7 +41,8 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | Pro · A1 | **Folder tree** — per-project asset folders (tree, drag/menu move, counts), coexist with collections | ✅ |
 | Pro · A2 | **Per-asset version history + rollback + diff** (the headline) — `asset_versions` + head pointer; regenerate appends a version; restore is non-destructive; before/after slider | ✅ |
 | Pro · A3 | Reposition UI/landing — library/folders/review as the hero | ⏳ |
-| Pro · B | Localized edits — deterministic (free) + masked/inpaint seam | ⏳ |
+| Pro · B1 | **Deterministic edits** — free, instant, model-free (crop/resize/flip/rotate/recolor/bg-remove/convert); each edit = a new version | ✅ |
+| Pro · B2 | Masked/inpaint edit — UX + provider seam (mock now; fal.ai/Replicate later) | ⏳ |
 | Pro · C | Permissions — per-project roles + reviewer gate | ⏳ |
 | Pro · D | Consistency depth — smart-exemplar → ControlNet → per-project LoRA | 💡 |
 

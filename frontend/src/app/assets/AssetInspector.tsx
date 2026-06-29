@@ -4,6 +4,7 @@ import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { CommentThread } from './CommentThread'
 import { VersionHistory } from './VersionHistory'
+import { EditTools } from './EditTools'
 
 /**
  * Asset inspector — a slide-over for one asset: preview, editable role/tags,
@@ -305,6 +306,18 @@ export function AssetInspector({
               </div>
             ) : (
               <p className="mb-5 text-xs text-text-dim">No collections yet — create one in the Collections tab.</p>
+            )}
+
+            {detail.kind !== 'audio' && (
+              <div className="mb-6 border-t border-white/8 pt-4">
+                <EditTools
+                  asset={detail}
+                  onChanged={(updated) => {
+                    setDetail((d) => (d ? { ...d, ...updated } : d))
+                    onChanged(updated)
+                  }}
+                />
+              </div>
             )}
 
             <div className="mb-6 border-t border-white/8 pt-4">

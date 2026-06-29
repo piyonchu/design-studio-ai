@@ -29,6 +29,7 @@ pub fn router() -> Router<AppState> {
         .route("/assets/:id/versions", get(list_versions))
         .route("/assets/:id/versions/:vid/restore", post(restore_version))
         .route("/assets/:id/regenerate", post(regenerate))
+        .route("/assets/:id/edit", post(edit_asset))
 }
 
 pub(crate) const ASSET_COLS: &str =
@@ -815,6 +816,49 @@ async fn regenerate(
         .await?;
     crate::mirror::save(project_id, asset.id, &img.mime, &img.bytes);
     ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&img.bytes)).await;
+    Ok(Json(with_url(asset)))
+}
+
+/// Apply a deterministic, model-free edit (crop/resize/flip/rotate/recolor/
+/// bg-remove/convert) and record the result as a **new version** (A2). Free,
+/// instant, non-destructive — the pre-edit image stays in history. Editor+.
+async fn edit_asset(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+    Json(op): Json<crate::edit::EditOp>,
+) -> Result<Json<Asset>, AppError> {
+    let row: Option<(Uuid, String, Option<String>)> =
+        sqlx::query_as("SELECT project_id, s3_key, mime_type FROM assets WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let (project_id, s3_key, mime) = row.ok_or(AppError::NotFound)?;
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
+
+    let (bytes, m) = asset_bytes(&state, &s3_key, mime.as_deref()).await?;
+    if !is_raster(&m) {
+        return Err(AppError::BadRequest("only raster images can be edited".into()));
+    }
+    let (out_bytes, out_mime) = crate::edit::apply(&bytes, &m, &op)?;
+
+    let new_key = if state.storage.configured() {
+        let key = format!("projects/{project_id}/assets/{}", Uuid::new_v4());
+        state.storage.put(&key, &out_bytes, &out_mime).await?;
+        key
+    } else {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&out_bytes);
+        format!("data:{out_mime};base64,{b64}")
+    };
+
+    record_version(&state.pool, id, &new_key, &out_mime, None, Some(&op.note()), Some(user.id)).await?;
+
+    let asset = sqlx::query_as::<_, Asset>(&format!("SELECT {ASSET_COLS} FROM assets WHERE id = $1"))
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+    crate::mirror::save(project_id, asset.id, &out_mime, &out_bytes);
+    ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&out_bytes)).await;
     Ok(Json(with_url(asset)))
 }
 

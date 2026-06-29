@@ -502,3 +502,95 @@ async fn asset_versions_regenerate_and_restore() {
     .await;
     assert_eq!(st, StatusCode::NOT_FOUND, "unknown version → 404");
 }
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn deterministic_edit_appends_version() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("AUDIO_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"Edits\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    // Upload a real PNG so the edit has actual raster bytes to transform.
+    let png = {
+        use std::io::Cursor;
+        let img = image::RgbaImage::from_pixel(10, 6, image::Rgba([180, 40, 40, 255]));
+        let mut buf = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .unwrap();
+        buf.into_inner()
+    };
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/projects/{pid}/assets/upload"))
+        .header("content-type", "image/png")
+        .header("cookie", &cookie)
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 50000))))
+        .body(Body::from(png))
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED, "upload base");
+    let b = to_bytes(resp.into_body(), usize::MAX).await.unwrap().to_vec();
+    let aid = field(&b, "id").to_owned();
+
+    // Rotate 90° → a new version; the head image is now 6×10.
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/edit"),
+        Some(&cookie),
+        Some("{\"op\":\"rotate\",\"degrees\":90}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "edit rotate");
+
+    let (_st, b, _) = send(&router, "GET", &format!("/assets/{aid}/versions"), Some(&cookie), None).await;
+    let versions: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert_eq!(versions.as_array().unwrap().len(), 2, "edit appended a version");
+    assert_eq!(versions[0]["change_note"], "Rotated 90°");
+
+    let (_st, head, _) = send(&router, "GET", &format!("/assets/{aid}/file"), Some(&cookie), None).await;
+    let img = image::load_from_memory(&head).expect("valid png");
+    assert_eq!((img.width(), img.height()), (6, 10), "rotated dimensions");
+
+    // An invalid op is rejected without touching history.
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/edit"),
+        Some(&cookie),
+        Some("{\"op\":\"rotate\",\"degrees\":45}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "bad rotation rejected");
+}

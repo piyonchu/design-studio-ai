@@ -322,6 +322,23 @@ export const regenerateAsset = (assetId: string, prompt?: string) =>
     body: JSON.stringify(prompt ? { prompt } : {}),
   })
 
+/** A deterministic, model-free edit op (mirrors the backend `EditOp` enum). */
+export type EditOp =
+  | { op: 'crop'; x: number; y: number; w: number; h: number }
+  | { op: 'resize'; w: number; h: number }
+  | { op: 'flip'; axis: 'horizontal' | 'vertical' }
+  | { op: 'rotate'; degrees: 90 | 180 | 270 }
+  | { op: 'grayscale' }
+  | { op: 'invert' }
+  | { op: 'hue'; degrees: number }
+  | { op: 'brighten'; value: number }
+  | { op: 'remove_bg'; tolerance?: number }
+  | { op: 'convert'; format: 'png' | 'jpeg' }
+
+/** Apply a free, instant edit; returns the asset with its new head version. */
+export const editAsset = (assetId: string, op: EditOp) =>
+  request<Asset>(`/assets/${assetId}/edit`, { method: 'POST', body: JSON.stringify(op) })
+
 /** Upload a base/reference image. Raw bytes body, not multipart. */
 export const uploadAsset = async (
   projectId: string,
