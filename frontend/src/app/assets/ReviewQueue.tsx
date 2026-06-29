@@ -11,7 +11,7 @@ import { CommentThread } from './CommentThread'
  * the asset from the queue and advances to the next, so a reviewer can clear
  * the backlog without leaving the panel.
  */
-export function ReviewQueue({ projectId }: { projectId: string }) {
+export function ReviewQueue({ projectId, canApprove = true }: { projectId: string; canApprove?: boolean }) {
   const [queue, setQueue] = useState<api.Asset[]>([])
   const [focusId, setFocusId] = useState<string | null>(null)
   const [fit, setFit] = useState<{ score: number | null; basis: number } | null>(null)
@@ -145,7 +145,8 @@ export function ReviewQueue({ projectId }: { projectId: string }) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => decide(focused.id, 'approved')}
-                  disabled={busy}
+                  disabled={busy || !canApprove}
+                  title={canApprove ? undefined : 'Only a reviewer or owner can approve'}
                   className="inline-flex items-center gap-1.5 rounded-[10px] bg-teal px-4 py-2 text-sm font-semibold text-bg transition active:translate-y-px disabled:opacity-50"
                 >
                   {busy ? <SpinnerGapIcon size={15} className="animate-spin" /> : <CheckIcon size={15} weight="bold" />}

@@ -167,3 +167,51 @@ pub async fn require_project_access(
     .await?;
     check_role(role, min)
 }
+
+/// The caller's *effective* role on a project (Phase C): a `project_members`
+/// override if present, else their workspace role mapped through. `None` when
+/// they aren't a member of the owning workspace (no access at all). Workspace
+/// owners always resolve to project `owner` — an override can't lock them out.
+pub async fn effective_project_role(
+    pool: &PgPool,
+    project_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<crate::models::ProjectRole>, AppError> {
+    use crate::models::ProjectRole;
+    let ws: Option<WorkspaceRole> = sqlx::query_scalar(
+        "SELECT m.role FROM projects p
+         JOIN workspace_members m ON m.workspace_id = p.workspace_id
+         WHERE p.id = $1 AND m.user_id = $2",
+    )
+    .bind(project_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(ws) = ws else { return Ok(None) };
+    if ws == WorkspaceRole::Owner {
+        return Ok(Some(ProjectRole::Owner));
+    }
+    let override_role: Option<ProjectRole> = sqlx::query_scalar(
+        "SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2",
+    )
+    .bind(project_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(Some(override_role.unwrap_or_else(|| ProjectRole::from_workspace(ws))))
+}
+
+/// Require at least `min` *project* role; returns the effective role on success.
+/// 404 when not a workspace member (don't reveal the project), 403 when below.
+pub async fn require_project_role(
+    pool: &PgPool,
+    project_id: Uuid,
+    user_id: Uuid,
+    min: crate::models::ProjectRole,
+) -> Result<crate::models::ProjectRole, AppError> {
+    match effective_project_role(pool, project_id, user_id).await? {
+        None => Err(AppError::NotFound),
+        Some(r) if r >= min => Ok(r),
+        Some(_) => Err(AppError::Forbidden),
+    }
+}

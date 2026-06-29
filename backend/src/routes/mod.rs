@@ -8,7 +8,9 @@ mod collections;
 mod comments;
 mod context;
 mod export;
+mod folders;
 mod lineage;
+mod project_members;
 mod projects;
 mod recipes;
 mod search;
@@ -31,10 +33,12 @@ pub fn router() -> Router<AppState> {
         .merge(auth::router())
         .merge(workspaces::router())
         .merge(projects::router())
+        .merge(project_members::router())
         .merge(canon::router())
         .merge(assets::router())
         .merge(audio::router())
         .merge(collections::router())
+        .merge(folders::router())
         .merge(comments::router())
         .merge(lineage::router())
         .merge(export::router())

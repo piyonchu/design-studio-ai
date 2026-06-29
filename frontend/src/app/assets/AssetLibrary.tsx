@@ -23,6 +23,7 @@ import { ApiError } from '../../lib/api'
 import { AssetInspector } from './AssetInspector'
 import { ExportDialog } from '../export/ExportDialog'
 import { JobsBanner } from './JobsBanner'
+import { FolderTree } from './FolderTree'
 import { verticalConfig } from '../verticals'
 
 const STATUSES: api.AssetStatus[] = ['candidate', 'approved', 'needs_review', 'rejected']
@@ -48,7 +49,15 @@ const STATUS_DOT: Record<api.AssetStatus, string> = {
  * language, and multi-select batch actions (approve / add-to-collection).
  * Click a tile to pick a derivation base; toggle Select for batch mode.
  */
-export function AssetLibrary({ projectId, vertical }: { projectId: string; vertical?: string }) {
+export function AssetLibrary({
+  projectId,
+  vertical,
+  canApprove = true,
+}: {
+  projectId: string
+  vertical?: string
+  canApprove?: boolean
+}) {
   const PRESETS = verticalConfig(vertical).derivePresets
   const [assets, setAssets] = useState<api.Asset[]>([])
   const [collections, setCollections] = useState<api.CollectionSummary[]>([])
@@ -74,6 +83,9 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
   const [collectionId, setCollectionId] = useState<string | null>(null)
   // assetId-sets for the active collection filter, fetched lazily + cached.
   const [collMembers, setCollMembers] = useState<Record<string, Set<string>>>({})
+  // Folder tree + the active folder scope (null = all assets, 'root' = unfiled).
+  const [folders, setFolders] = useState<api.FolderNode[]>([])
+  const [folderSel, setFolderSel] = useState<string | null>(null)
 
   // Multi-select
   const [selecting, setSelecting] = useState(false)
@@ -91,9 +103,12 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
   const bumpFacets = () => setFacetsBump((n) => n + 1)
   const PAGE = 50
 
+  const reloadFolders = () => api.listFolders(projectId).then(setFolders).catch(() => {})
+
   useEffect(() => {
     api.listCollections(projectId).then(setCollections).catch(() => {})
     api.listRecipes(projectId).then(setRecipes).catch(() => {})
+    reloadFolders()
   }, [projectId])
 
   // Filter-rail counts over the whole project; refetched after mutations.
@@ -112,6 +127,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
         role: [...roles],
         source: [...sources],
         collection: collectionId,
+        folder: folderSel,
       })
       .then((page) => {
         if (!alive) return
@@ -122,7 +138,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     return () => {
       alive = false
     }
-  }, [projectId, statuses, roles, sources, collectionId])
+  }, [projectId, statuses, roles, sources, collectionId, folderSel])
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return
@@ -135,6 +151,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
         role: [...roles],
         source: [...sources],
         collection: collectionId,
+        folder: folderSel,
       })
       setAssets((a) => [...a, ...page.items])
       setNextCursor(page.next_cursor)
@@ -227,11 +244,14 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
       if (statuses.size && !statuses.has(a.status)) return false
       if (sources.size && !sources.has(a.source_kind)) return false
       if (collectionId && !(members?.has(a.id) ?? false)) return false
+      if (folderSel === 'root' && a.folder_id !== null) return false
+      if (folderSel && folderSel !== 'root' && a.folder_id !== folderSel) return false
       return true
     })
-  }, [assets, searchHits, roles, statuses, sources, collectionId, collMembers])
+  }, [assets, searchHits, roles, statuses, sources, collectionId, collMembers, folderSel])
 
-  const activeFilters = roles.size + statuses.size + sources.size + (collectionId ? 1 : 0) + (query.trim() ? 1 : 0)
+  const activeFilters =
+    roles.size + statuses.size + sources.size + (collectionId ? 1 : 0) + (query.trim() ? 1 : 0) + (folderSel ? 1 : 0)
 
   function toggle<T>(set: Set<T>, value: T): Set<T> {
     const next = new Set(set)
@@ -245,6 +265,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     setStatuses(new Set())
     setSources(new Set())
     setCollectionId(null)
+    setFolderSel(null)
   }
 
   function genError(err: unknown) {
@@ -271,6 +292,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
             role: [...roles],
             source: [...sources],
             collection: collectionId,
+            folder: folderSel,
           })
           .then((page) => {
             setAssets(page.items)
@@ -278,6 +300,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
           })
           .catch(() => {})
         bumpFacets()
+        reloadFolders()
         return
       }
       if (job.status === 'failed') {
@@ -375,6 +398,25 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
       bumpFacets()
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Move an asset into a folder (or to root with null). Drives drag-onto-folder
+  // and the inspector's folder picker. Drops the tile from view if it no longer
+  // matches the active folder scope, and refreshes the tree counts.
+  async function moveAssetToFolder(assetId: string, folderId: string | null) {
+    try {
+      const updated = await api.moveAsset(assetId, folderId)
+      const matches =
+        folderSel === null ||
+        (folderSel === 'root' && updated.folder_id === null) ||
+        folderSel === updated.folder_id
+      setAssets((a) =>
+        matches ? a.map((x) => (x.id === assetId ? updated : x)) : a.filter((x) => x.id !== assetId),
+      )
+      reloadFolders()
+    } catch (err) {
+      genError(err)
     }
   }
 
@@ -490,6 +532,15 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <FolderTree
+            projectId={projectId}
+            folders={folders}
+            selected={folderSel}
+            onSelect={setFolderSel}
+            onChanged={reloadFolders}
+            onMoveAsset={moveAssetToFolder}
+          />
+
           <Section title="Status">
             {STATUSES.map((s) => (
               <FilterChip
@@ -586,7 +637,8 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
             <span className="text-sm text-text">{selected.size} selected</span>
             <button
               onClick={() => batchStatus('approved')}
-              disabled={!selected.size || busy}
+              disabled={!selected.size || busy || !canApprove}
+              title={canApprove ? undefined : 'Only a reviewer or owner can approve'}
               className="inline-flex items-center gap-1.5 rounded-[8px] bg-teal px-3 py-1.5 text-sm font-semibold text-bg transition active:translate-y-px disabled:opacity-40"
             >
               <CheckIcon size={14} weight="bold" />
@@ -833,6 +885,11 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
                   <figure
                     key={a.id}
                     onClick={() => onTileClick(a)}
+                    draggable={!selecting}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/asset-id', a.id)
+                      e.dataTransfer.effectAllowed = 'move'
+                    }}
                     className={`group relative cursor-pointer overflow-hidden rounded-[12px] transition ${ring}`}
                     title={a.derivation ?? a.prompt ?? a.role ?? ''}
                   >
@@ -903,16 +960,18 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
 
                     {!selecting && a.status === 'candidate' && (
                       <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-black/45 p-1.5 opacity-0 backdrop-blur transition group-hover:opacity-100">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            review(a.id, 'approved')
-                          }}
-                          aria-label="Approve"
-                          className="flex flex-1 items-center justify-center rounded-[6px] bg-teal/85 py-1 text-bg transition hover:bg-teal"
-                        >
-                          <CheckIcon size={13} weight="bold" />
-                        </button>
+                        {canApprove && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              review(a.id, 'approved')
+                            }}
+                            aria-label="Approve"
+                            className="flex flex-1 items-center justify-center rounded-[6px] bg-teal/85 py-1 text-bg transition hover:bg-teal"
+                          >
+                            <CheckIcon size={13} weight="bold" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()

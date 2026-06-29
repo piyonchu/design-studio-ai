@@ -53,6 +53,13 @@ async fn generate(
         .bind(json!({ "duration_ms": clip.duration_ms }))
         .fetch_one(&state.pool)
         .await?;
+        let mut asset = asset;
+        asset.current_version_id = Some(
+            super::assets::record_version(
+                &state.pool, asset.id, &s3_key, &clip.mime, Some(&body.prompt), None, Some(user.id),
+            )
+            .await?,
+        );
         crate::mirror::save(project_id, asset.id, &clip.mime, &clip.bytes);
         ai::embeddings::index_asset_soft(&state.pool, &asset, None).await;
         assets.push(with_url(asset));

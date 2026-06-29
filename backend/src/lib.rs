@@ -5,6 +5,7 @@
 pub mod ai;
 pub mod auth;
 pub mod db;
+pub mod edit;
 pub mod error;
 pub mod export;
 pub mod guardrail;

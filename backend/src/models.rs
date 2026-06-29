@@ -16,6 +16,34 @@ pub enum WorkspaceRole {
     Owner,
 }
 
+/// Per-project role override (Phase C), layered on the workspace role. Ordered
+/// viewer < editor < reviewer < owner so `>=` gates capability; `reviewer`+ may
+/// approve assets (the review gate).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "project_role", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectRole {
+    Viewer,
+    Editor,
+    Reviewer,
+    Owner,
+}
+
+impl ProjectRole {
+    /// The project role a workspace member has by default (no override).
+    pub fn from_workspace(r: WorkspaceRole) -> Self {
+        match r {
+            WorkspaceRole::Viewer => ProjectRole::Viewer,
+            WorkspaceRole::Editor => ProjectRole::Editor,
+            WorkspaceRole::Owner => ProjectRole::Owner,
+        }
+    }
+    /// Reviewer+ may approve assets (the review gate).
+    pub fn can_approve(self) -> bool {
+        self >= ProjectRole::Reviewer
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "asset_kind", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
@@ -136,6 +164,34 @@ pub struct InviteMember {
     pub role: Option<WorkspaceRole>,
 }
 
+// ── Project access (Phase C) ──────────────────────────────────────────────────
+
+/// A row in the per-project access table: a workspace member, the role they
+/// effectively have on this project, and whether that's an explicit override.
+#[derive(Debug, Serialize)]
+pub struct ProjectMemberRow {
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: Option<String>,
+    pub workspace_role: WorkspaceRole,
+    /// Effective project role (override if present, else derived from workspace).
+    pub project_role: ProjectRole,
+    pub overridden: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetProjectRole {
+    pub role: ProjectRole,
+}
+
+/// The caller's effective access on a project — drives UI gating (e.g. whether
+/// the approve buttons are enabled).
+#[derive(Debug, Serialize)]
+pub struct ProjectAccess {
+    pub role: ProjectRole,
+    pub can_approve: bool,
+}
+
 /// Internal row for credential verification (carries the hash).
 #[derive(Debug, FromRow)]
 pub struct UserCredentials {
@@ -191,6 +247,12 @@ pub struct Asset {
     pub canon_version_id: Option<Uuid>,
     /// Approved style anchor: future generation conditions on it (the moat loop).
     pub exemplar: bool,
+    /// Home folder in the project's tree; null = project root (unfiled).
+    #[sqlx(default)]
+    pub folder_id: Option<Uuid>,
+    /// Head version pointer (A2). Null only on pre-versioning legacy rows.
+    #[sqlx(default)]
+    pub current_version_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     /// Stable, browser-usable URL for the image. Not stored — filled in by the
     /// route after fetching (see `routes::assets`). For object-stored assets
@@ -227,6 +289,61 @@ pub struct UpdateAsset {
     pub name: Option<String>,
     #[serde(default)]
     pub exemplar: Option<bool>,
+    /// Move the asset to a folder. Outer None = field absent (unchanged); inner
+    /// None (explicit JSON null) = move to project root.
+    #[serde(default, deserialize_with = "crate::models::double_option")]
+    pub folder_id: Option<Option<Uuid>>,
+}
+
+/// Deserialize a field so an explicit JSON `null` becomes `Some(None)` while an
+/// absent field stays `None` — lets a PATCH distinguish "clear it" from "leave
+/// it". (serde's `default` alone collapses both to `None`.)
+pub fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Deserialize::deserialize(de).map(Some)
+}
+
+// ── Folders (asset tree — an asset's canonical home) ──────────────────────────
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct Folder {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A folder plus the count of assets filed directly in it (not descendants) —
+/// the list row the board's tree renders.
+#[derive(Debug, Serialize, FromRow)]
+pub struct FolderNode {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub name: String,
+    pub asset_count: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateFolder {
+    pub name: String,
+    #[serde(default)]
+    pub parent_id: Option<Uuid>,
+}
+
+/// Rename and/or reparent a folder. Absent fields are left unchanged; an
+/// explicit null `parent_id` moves the folder to the root.
+#[derive(Debug, Deserialize)]
+pub struct UpdateFolder {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default, deserialize_with = "crate::models::double_option")]
+    pub parent_id: Option<Option<Uuid>>,
 }
 
 /// One keyset page of assets. `next_cursor` is an opaque token to pass back as
@@ -260,6 +377,39 @@ pub struct AssetDetail {
     pub asset: Asset,
     pub base: Option<Asset>,
     pub derivatives: Vec<Asset>,
+}
+
+// ── Asset versions (per-asset history) ────────────────────────────────────────
+
+/// One entry in an asset's version history. `s3_key` is intentionally not
+/// serialized (it can be a multi-MB inline data URL); clients load bytes via
+/// `url` (the file proxy with `?version=`). `author_email` is joined for display.
+#[derive(Debug, Serialize, FromRow)]
+pub struct AssetVersion {
+    pub id: Uuid,
+    pub asset_id: Uuid,
+    pub version: i32,
+    #[serde(skip_serializing)]
+    pub s3_key: String,
+    pub mime_type: Option<String>,
+    pub prompt: Option<String>,
+    pub change_note: Option<String>,
+    pub created_by: Option<Uuid>,
+    #[sqlx(default)]
+    pub author_email: Option<String>,
+    pub created_at: DateTime<Utc>,
+    /// Stable, browser-usable URL for this version's bytes — filled in by the
+    /// route (`GET /assets/:id/file?version=:vid`). Not stored.
+    #[sqlx(default)]
+    pub url: String,
+}
+
+/// Regenerate an asset into a new version. Optional new prompt; absent → reuse
+/// the asset's current prompt.
+#[derive(Debug, Deserialize)]
+pub struct RegenerateAsset {
+    #[serde(default)]
+    pub prompt: Option<String>,
 }
 
 // ── Collections ───────────────────────────────────────────────────────────────

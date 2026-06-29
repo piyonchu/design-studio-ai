@@ -93,6 +93,36 @@ export const inviteMember = (workspaceId: string, email: string, role: Role = 'e
 export const removeMember = (workspaceId: string, userId: string) =>
   request<void>(`/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' })
 
+// ── Project access (per-project roles + reviewer gate, Phase C) ───────────────
+export type ProjectRole = 'viewer' | 'editor' | 'reviewer' | 'owner'
+/** The caller's effective access on a project (drives UI gating). */
+export interface ProjectAccess {
+  role: ProjectRole
+  can_approve: boolean
+}
+/** A workspace member with the role they effectively have on a project. */
+export interface ProjectMemberRow {
+  user_id: string
+  email: string
+  display_name: string | null
+  workspace_role: Role
+  project_role: ProjectRole
+  overridden: boolean
+}
+export const getProjectAccess = (projectId: string) =>
+  request<ProjectAccess>(`/projects/${projectId}/access`)
+export const listProjectMembers = (projectId: string) =>
+  request<ProjectMemberRow[]>(`/projects/${projectId}/members`)
+/** Set a per-project role override (project owner only). */
+export const setProjectRole = (projectId: string, userId: string, role: ProjectRole) =>
+  request<void>(`/projects/${projectId}/members/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  })
+/** Clear a per-project override → falls back to the member's workspace role. */
+export const clearProjectRole = (projectId: string, userId: string) =>
+  request<void>(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' })
+
 // ── Workspaces & projects ─────────────────────────────────────────────────────
 export const listWorkspaces = () => request<Workspace[]>('/workspaces')
 
@@ -170,6 +200,8 @@ export interface Asset {
   derivation: string | null // for derivatives: the preset/instruction used
   canon_version_id: string | null
   exemplar: boolean // approved style anchor — conditions future generation
+  folder_id: string | null // home folder in the project tree; null = root
+  current_version_id: string | null // head version pointer (A2)
   created_at: string
 }
 
@@ -201,6 +233,8 @@ export interface ListAssetsOpts {
   role?: string[]
   source?: string[]
   collection?: string | null
+  /** A folder id, or the literal `'root'` for unfiled assets. */
+  folder?: string | null
 }
 
 /** Keyset-paginated, server-filtered board list. */
@@ -212,6 +246,7 @@ export const listAssets = (projectId: string, opts: ListAssetsOpts = {}) => {
   if (opts.role?.length) p.set('role', opts.role.join(','))
   if (opts.source?.length) p.set('source', opts.source.join(','))
   if (opts.collection) p.set('collection', opts.collection)
+  if (opts.folder) p.set('folder', opts.folder)
   const qs = p.toString()
   return request<AssetPage>(`/projects/${projectId}/assets${qs ? `?${qs}` : ''}`)
 }
@@ -258,7 +293,14 @@ export const getAsset = (id: string) => request<AssetDetail>(`/assets/${id}`)
 /** Patch editable metadata. Only provided fields change. */
 export const updateAsset = (
   id: string,
-  patch: { name?: string; role?: string; tags?: string[]; exemplar?: boolean },
+  patch: {
+    name?: string
+    role?: string
+    tags?: string[]
+    exemplar?: boolean
+    /** Move to a folder; `null` moves to the project root. */
+    folder_id?: string | null
+  },
 ) =>
   request<Asset>(`/assets/${id}`, {
     method: 'PATCH',
@@ -280,6 +322,52 @@ export function displayName(a: Asset): string {
 
 /** Delete an asset (its lineage edges cascade). */
 export const deleteAsset = (id: string) => request<void>(`/assets/${id}`, { method: 'DELETE' })
+
+// ── Asset versions (per-asset history) ────────────────────────────────────────
+export interface AssetVersion {
+  id: string
+  asset_id: string
+  version: number
+  url: string // bytes for this version (file proxy with ?version=)
+  mime_type: string | null
+  prompt: string | null
+  change_note: string | null
+  created_by: string | null
+  author_email: string | null
+  created_at: string
+}
+
+/** An asset's version history, newest first. */
+export const listVersions = (assetId: string) =>
+  request<AssetVersion[]>(`/assets/${assetId}/versions`)
+
+/** Roll back to a prior version — appends a copy as the new head (non-destructive). */
+export const restoreVersion = (assetId: string, versionId: string) =>
+  request<Asset>(`/assets/${assetId}/versions/${versionId}/restore`, { method: 'POST' })
+
+/** Regenerate the asset into a new version (optional new prompt; else reuse current). */
+export const regenerateAsset = (assetId: string, prompt?: string) =>
+  request<Asset>(`/assets/${assetId}/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify(prompt ? { prompt } : {}),
+  })
+
+/** A deterministic, model-free edit op (mirrors the backend `EditOp` enum). */
+export type EditOp =
+  | { op: 'crop'; x: number; y: number; w: number; h: number }
+  | { op: 'resize'; w: number; h: number }
+  | { op: 'flip'; axis: 'horizontal' | 'vertical' }
+  | { op: 'rotate'; degrees: 90 | 180 | 270 }
+  | { op: 'grayscale' }
+  | { op: 'invert' }
+  | { op: 'hue'; degrees: number }
+  | { op: 'brighten'; value: number }
+  | { op: 'remove_bg'; tolerance?: number }
+  | { op: 'convert'; format: 'png' | 'jpeg' }
+
+/** Apply a free, instant edit; returns the asset with its new head version. */
+export const editAsset = (assetId: string, op: EditOp) =>
+  request<Asset>(`/assets/${assetId}/edit`, { method: 'POST', body: JSON.stringify(op) })
 
 /** Upload a base/reference image. Raw bytes body, not multipart. */
 export const uploadAsset = async (
@@ -345,6 +433,44 @@ export const removeFromCollection = (id: string, assetId: string) =>
 
 export const deleteCollection = (id: string) =>
   request<void>(`/collections/${id}`, { method: 'DELETE' })
+
+// ── Folders (asset tree — an asset's canonical home) ──────────────────────────
+export interface Folder {
+  id: string
+  project_id: string
+  parent_id: string | null
+  name: string
+  created_at: string
+}
+/** A folder list row carrying the count of assets filed directly in it. */
+export interface FolderNode extends Folder {
+  asset_count: number
+}
+
+/** The project's folder tree as a flat list (nest by `parent_id`). */
+export const listFolders = (projectId: string) =>
+  request<FolderNode[]>(`/projects/${projectId}/folders`)
+
+export const createFolder = (projectId: string, name: string, parentId?: string | null) =>
+  request<Folder>(`/projects/${projectId}/folders`, {
+    method: 'POST',
+    body: JSON.stringify({ name, parent_id: parentId ?? null }),
+  })
+
+/** Rename and/or reparent. `parent_id: null` moves the folder to the root. */
+export const updateFolder = (
+  id: string,
+  patch: { name?: string; parent_id?: string | null },
+) =>
+  request<Folder>(`/folders/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
+
+/** Delete a folder; its subtree cascades and contained assets are unfiled. */
+export const deleteFolder = (id: string) =>
+  request<void>(`/folders/${id}`, { method: 'DELETE' })
+
+/** Move an asset into a folder (or to the root with `null`). */
+export const moveAsset = (assetId: string, folderId: string | null) =>
+  updateAsset(assetId, { folder_id: folderId })
 
 // ── Search / RAG ─────────────────────────────────────────────────────────────
 export interface ScoredAsset extends Asset {

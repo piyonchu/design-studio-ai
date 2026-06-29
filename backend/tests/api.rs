@@ -275,3 +275,453 @@ async fn async_generation_job_runs_to_success() {
     let ids = v["result"]["asset_ids"].as_array().expect("result.asset_ids");
     assert_eq!(ids.len(), 2, "produced two assets");
 }
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn folders_tree_move_and_cascade() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("AUDIO_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    // signup → workspace → project
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"Folders\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    // root folder + subfolder
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/folders"),
+        Some(&cookie),
+        Some("{\"name\":\"Characters\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "create root folder");
+    let parent = field(&b, "id").to_owned();
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/folders"),
+        Some(&cookie),
+        Some(&format!("{{\"name\":\"Heroes\",\"parent_id\":\"{parent}\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "create subfolder");
+    let child = field(&b, "id").to_owned();
+
+    // generate one asset, then move it into the subfolder
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/assets"),
+        Some(&cookie),
+        Some("{\"prompt\":\"a knight\",\"count\":1}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "generate");
+    let aid = all_ids(&b)[0].clone();
+
+    let (st, b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/assets/{aid}"),
+        Some(&cookie),
+        Some(&format!("{{\"folder_id\":\"{child}\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "move asset into folder");
+    assert_eq!(field(&b, "folder_id"), child, "asset now filed in subfolder");
+
+    // listing scoped to the subfolder contains the asset; root listing does not
+    let (_st, b, _) =
+        send(&router, "GET", &format!("/projects/{pid}/assets?folder={child}"), Some(&cookie), None).await;
+    assert!(all_ids(&b).contains(&aid), "asset shows under its folder");
+    let (_st, b, _) =
+        send(&router, "GET", &format!("/projects/{pid}/assets?folder=root"), Some(&cookie), None).await;
+    assert!(!all_ids(&b).contains(&aid), "asset no longer at root");
+
+    // the folder list carries the direct asset count
+    let (_st, b, _) = send(&router, "GET", &format!("/projects/{pid}/folders"), Some(&cookie), None).await;
+    let folders: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    let heroes = folders.as_array().unwrap().iter().find(|f| f["id"] == child).unwrap();
+    assert_eq!(heroes["asset_count"], 1, "subfolder reports one asset");
+
+    // reparent cycle (move parent under its own descendant) is rejected
+    let (st, _b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/folders/{parent}"),
+        Some(&cookie),
+        Some(&format!("{{\"parent_id\":\"{child}\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "cycle rejected");
+
+    // deleting the root folder cascades the subtree and UNFILES the asset
+    let (st, _b, _) =
+        send(&router, "DELETE", &format!("/folders/{parent}"), Some(&cookie), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT, "delete folder");
+    let (_st, b, _) = send(&router, "GET", &format!("/projects/{pid}/folders"), Some(&cookie), None).await;
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&b).unwrap().as_array().unwrap().len(), 0, "subtree gone");
+    let (_st, b, _) = send(&router, "GET", &format!("/assets/{aid}"), Some(&cookie), None).await;
+    let asset: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert!(asset["folder_id"].is_null(), "asset survived, unfiled");
+}
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn asset_versions_regenerate_and_restore() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("AUDIO_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    // signup → workspace → project
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"Versions\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    // generate → asset starts at v1 with a head pointer
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/assets"),
+        Some(&cookie),
+        Some("{\"prompt\":\"a wizard\",\"count\":1}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "generate");
+    let asset: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    let aid = asset[0]["id"].as_str().unwrap().to_owned();
+    assert!(asset[0]["current_version_id"].is_string(), "head set on generate");
+
+    let versions = |router: axum::Router, cookie: String, aid: String| async move {
+        let (_st, b, _) = send(&router, "GET", &format!("/assets/{aid}/versions"), Some(&cookie), None).await;
+        serde_json::from_slice::<serde_json::Value>(&b).unwrap()
+    };
+
+    let v = versions(router.clone(), cookie.clone(), aid.clone()).await;
+    assert_eq!(v.as_array().unwrap().len(), 1, "one version after generate");
+    let v1_id = v[0]["id"].as_str().unwrap().to_owned();
+
+    // regenerate → v2, attributed, "Regenerated"
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/regenerate"),
+        Some(&cookie),
+        Some("{\"prompt\":\"a wizard, blue robe\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "regenerate");
+    let v = versions(router.clone(), cookie.clone(), aid.clone()).await;
+    assert_eq!(v.as_array().unwrap().len(), 2, "two versions");
+    assert_eq!(v[0]["version"], 2);
+    assert_eq!(v[0]["change_note"], "Regenerated");
+    assert_eq!(v[0]["author_email"], email, "version attributed to author");
+
+    // a specific version's bytes are servable and differ from the head
+    let (st, head_bytes, _) = send(&router, "GET", &format!("/assets/{aid}/file"), Some(&cookie), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, v1_bytes, _) =
+        send(&router, "GET", &format!("/assets/{aid}/file?version={v1_id}"), Some(&cookie), None).await;
+    assert_eq!(st, StatusCode::OK, "historical version servable");
+    assert_ne!(head_bytes, v1_bytes, "head (v2) differs from v1");
+
+    // restore v1 → appends v3 whose bytes equal v1 (non-destructive rollback)
+    let (st, _b, _) =
+        send(&router, "POST", &format!("/assets/{aid}/versions/{v1_id}/restore"), Some(&cookie), None).await;
+    assert_eq!(st, StatusCode::OK, "restore");
+    let v = versions(router.clone(), cookie.clone(), aid.clone()).await;
+    assert_eq!(v.as_array().unwrap().len(), 3, "restore appended a version");
+    assert_eq!(v[0]["version"], 3);
+    assert_eq!(v[0]["change_note"], "Restored v1");
+    let (_st, restored_bytes, _) = send(&router, "GET", &format!("/assets/{aid}/file"), Some(&cookie), None).await;
+    assert_eq!(restored_bytes, v1_bytes, "head now matches the restored v1 bytes");
+
+    // a bogus version id 404s
+    let (st, _b, _) = send(
+        &router,
+        "GET",
+        &format!("/assets/{aid}/file?version=00000000-0000-0000-0000-000000000000"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "unknown version → 404");
+}
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn deterministic_edit_appends_version() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("AUDIO_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"Edits\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    // Upload a real PNG so the edit has actual raster bytes to transform.
+    let png = {
+        use std::io::Cursor;
+        let img = image::RgbaImage::from_pixel(10, 6, image::Rgba([180, 40, 40, 255]));
+        let mut buf = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .unwrap();
+        buf.into_inner()
+    };
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/projects/{pid}/assets/upload"))
+        .header("content-type", "image/png")
+        .header("cookie", &cookie)
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 50000))))
+        .body(Body::from(png))
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED, "upload base");
+    let b = to_bytes(resp.into_body(), usize::MAX).await.unwrap().to_vec();
+    let aid = field(&b, "id").to_owned();
+
+    // Rotate 90° → a new version; the head image is now 6×10.
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/edit"),
+        Some(&cookie),
+        Some("{\"op\":\"rotate\",\"degrees\":90}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "edit rotate");
+
+    let (_st, b, _) = send(&router, "GET", &format!("/assets/{aid}/versions"), Some(&cookie), None).await;
+    let versions: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert_eq!(versions.as_array().unwrap().len(), 2, "edit appended a version");
+    assert_eq!(versions[0]["change_note"], "Rotated 90°");
+
+    let (_st, head, _) = send(&router, "GET", &format!("/assets/{aid}/file"), Some(&cookie), None).await;
+    let img = image::load_from_memory(&head).expect("valid png");
+    assert_eq!((img.width(), img.height()), (6, 10), "rotated dimensions");
+
+    // An invalid op is rejected without touching history.
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/edit"),
+        Some(&cookie),
+        Some("{\"op\":\"rotate\",\"degrees\":45}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "bad rotation rejected");
+}
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn reviewer_gate_blocks_editor_approval() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("AUDIO_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    // Owner A: workspace + project + a generated asset.
+    let a_email = format!("owner-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie_a) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{a_email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie_a = cookie_a.expect("A cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie_a), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie_a),
+        Some("{\"name\":\"Perms\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/assets"),
+        Some(&cookie_a),
+        Some("{\"prompt\":\"a knight\",\"count\":1}"),
+    )
+    .await;
+    let aid = all_ids(&b)[0].clone();
+
+    // Editor B: separate signup, then invited into A's workspace as editor.
+    let b_email = format!("editor-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, bbody, cookie_b) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{b_email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie_b = cookie_b.expect("B cookie");
+    let b_id = field(&bbody, "id").to_owned(); // first id = user.id
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/members"),
+        Some(&cookie_a),
+        Some(&format!("{{\"email\":\"{b_email}\",\"role\":\"editor\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "invite B as editor");
+
+    // B (editor) cannot approve, and /access says so.
+    let (_st, acc, _) = send(&router, "GET", &format!("/projects/{pid}/access"), Some(&cookie_b), None).await;
+    let acc: serde_json::Value = serde_json::from_slice(&acc).unwrap();
+    assert_eq!(acc["role"], "editor");
+    assert_eq!(acc["can_approve"], false, "editor cannot approve");
+    let (st, _b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/assets/{aid}"),
+        Some(&cookie_b),
+        Some("{\"status\":\"approved\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "editor approval blocked by review gate");
+
+    // B can still flag for review (editor-level write is allowed).
+    let (st, _b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/assets/{aid}"),
+        Some(&cookie_b),
+        Some("{\"status\":\"needs_review\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "editor may flag needs_review");
+
+    // Owner A promotes B to reviewer on this project.
+    let (st, _b, _) = send(
+        &router,
+        "PUT",
+        &format!("/projects/{pid}/members/{b_id}"),
+        Some(&cookie_a),
+        Some("{\"role\":\"reviewer\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::NO_CONTENT, "owner sets reviewer override");
+
+    // Now B can approve.
+    let (_st, acc, _) = send(&router, "GET", &format!("/projects/{pid}/access"), Some(&cookie_b), None).await;
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&acc).unwrap()["can_approve"], true);
+    let (st, _b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/assets/{aid}"),
+        Some(&cookie_b),
+        Some("{\"status\":\"approved\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "reviewer approval allowed");
+
+    // An editor cannot hand out roles (owner-only).
+    let (st, _b, _) = send(
+        &router,
+        "PUT",
+        &format!("/projects/{pid}/members/{b_id}"),
+        Some(&cookie_b),
+        Some("{\"role\":\"owner\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "non-owner cannot assign roles");
+}

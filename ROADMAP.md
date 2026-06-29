@@ -38,6 +38,16 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
 | — | Board pagination — keyset paging + server-side filters + facet counts | ✅ |
 | — | Cost guardrail — credit floor + per-workspace daily gen cap (env-tunable) | ✅ |
+| Pro · A1 | **Folder tree** — per-project asset folders (tree, drag/menu move, counts), coexist with collections | ✅ |
+| Pro · A2 | **Per-asset version history + rollback + diff** (the headline) — `asset_versions` + head pointer; regenerate appends a version; restore is non-destructive; before/after slider | ✅ |
+| Pro · A3 | Reposition UI/landing — library/folders/review as the hero | ⏳ |
+| Pro · B1 | **Deterministic edits** — free, instant, model-free (crop/resize/flip/rotate/recolor/bg-remove/convert); each edit = a new version | ✅ |
+| Pro · B2 | Masked/inpaint edit — UX + provider seam (mock now; fal.ai/Replicate later) | ⏳ |
+| Pro · C | **Permissions** — per-project role overrides + reviewer gate (editors submit, reviewers approve); layered on workspace roles | ✅ |
+| Pro · D | Consistency depth — smart-exemplar → ControlNet → per-project LoRA | 💡 |
+
+> **Pro-pipeline direction** (2026-06-30): reframe to a versioned, reviewed
+> production pipeline for pro/small studios. Full plan: [PRO_PIPELINE_PLAN.md](PRO_PIPELINE_PLAN.md).
 
 ### Done — Phase 3.5 (visual intelligence, mock embeddings)
 Mock-first feature-hashed embedder (`ai/embeddings.rs`, `EMBED_MOCK` default) —
