@@ -59,6 +59,17 @@ export function WorkspaceHub() {
     }
   }
 
+  async function trashProject(id: string) {
+    const prev = projects
+    setProjects((p) => p.filter((x) => x.id !== id)) // optimistic
+    try {
+      await api.deleteProject(id)
+    } catch (err) {
+      setProjects(prev) // roll back on failure
+      setError(err instanceof ApiError ? err.message : 'Failed to delete project.')
+    }
+  }
+
   return (
     <AppShell search={search} onSearch={setSearch}>
       <div className="mx-auto max-w-[1400px]">
@@ -143,7 +154,7 @@ export function WorkspaceHub() {
         ) : (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filtered.map((p) => (
-              <ProjectCard key={p.id} project={p} />
+              <ProjectCard key={p.id} project={p} onDelete={trashProject} />
             ))}
           </div>
         )}

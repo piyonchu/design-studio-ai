@@ -57,6 +57,9 @@ pub struct Project {
     /// Which vertical pack drives presets/canon hints: 'game_2d' | 'manhwa'.
     pub vertical: String,
     pub created_at: DateTime<Utc>,
+    /// Soft-delete timestamp; null = active. Set when trashed.
+    #[sqlx(default)]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 // ── Request DTOs ──────────────────────────────────────────────────────────────
@@ -103,7 +106,34 @@ pub struct CreateCanon {
 pub struct User {
     pub id: Uuid,
     pub email: String,
+    /// Editable display name (username); null → UI falls back to the email.
+    #[sqlx(default)]
+    pub display_name: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+/// Patch the signed-in user's profile.
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfile {
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+/// A workspace member row for the Team page.
+#[derive(Debug, Serialize, FromRow)]
+pub struct WorkspaceMember {
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: Option<String>,
+    pub role: WorkspaceRole,
+}
+
+/// Invite an existing user to the workspace by email.
+#[derive(Debug, Deserialize)]
+pub struct InviteMember {
+    pub email: String,
+    #[serde(default)]
+    pub role: Option<WorkspaceRole>,
 }
 
 /// Internal row for credential verification (carries the hash).

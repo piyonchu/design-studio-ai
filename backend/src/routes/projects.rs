@@ -15,7 +15,9 @@ pub fn router() -> Router<AppState> {
             "/workspaces/:workspace_id/projects",
             post(create).get(list),
         )
-        .route("/projects/:id", get(get_one))
+        .route("/workspaces/:workspace_id/trash", get(trash))
+        .route("/projects/:id", get(get_one).delete(soft_delete))
+        .route("/projects/:id/restore", post(restore))
 }
 
 async fn create(
@@ -58,12 +60,63 @@ async fn list(
 
     let rows = sqlx::query_as::<_, Project>(
         "SELECT id, workspace_id, name, brief, vertical, created_at
-         FROM projects WHERE workspace_id = $1 ORDER BY created_at DESC",
+         FROM projects WHERE workspace_id = $1 AND deleted_at IS NULL
+         ORDER BY created_at DESC",
     )
     .bind(workspace_id)
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(rows))
+}
+
+/// Trashed (soft-deleted) projects for a workspace, newest-deleted first.
+async fn trash(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(workspace_id): Path<Uuid>,
+) -> Result<Json<Vec<Project>>, AppError> {
+    auth::require_member(&state.pool, workspace_id, user.id, WorkspaceRole::Viewer).await?;
+    let rows = sqlx::query_as::<_, Project>(
+        "SELECT id, workspace_id, name, brief, vertical, created_at, deleted_at
+         FROM projects WHERE workspace_id = $1 AND deleted_at IS NOT NULL
+         ORDER BY deleted_at DESC",
+    )
+    .bind(workspace_id)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(rows))
+}
+
+/// Move a project to the trash (soft delete). Editor+.
+async fn soft_delete(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    auth::require_project_access(&state.pool, id, user.id, WorkspaceRole::Editor).await?;
+    sqlx::query("UPDATE projects SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Restore a trashed project. Editor+.
+async fn restore(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Project>, AppError> {
+    auth::require_project_access(&state.pool, id, user.id, WorkspaceRole::Editor).await?;
+    let project = sqlx::query_as::<_, Project>(
+        "UPDATE projects SET deleted_at = NULL WHERE id = $1
+         RETURNING id, workspace_id, name, brief, vertical, created_at, deleted_at",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(AppError::NotFound)?;
+    Ok(Json(project))
 }
 
 async fn get_one(

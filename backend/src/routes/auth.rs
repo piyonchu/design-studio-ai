@@ -11,7 +11,7 @@ use crate::auth::{
 };
 use crate::error::AppError;
 use crate::models::{
-    LoginRequest, SignupRequest, SignupResponse, User, UserCredentials, Workspace,
+    LoginRequest, SignupRequest, SignupResponse, UpdateProfile, User, UserCredentials, Workspace,
 };
 use crate::ratelimit;
 use crate::turnstile::TurnstileGuard;
@@ -29,7 +29,7 @@ pub fn router() -> Router<AppState> {
 
     let session = Router::new()
         .route("/auth/logout", post(logout))
-        .route("/auth/me", get(me));
+        .route("/auth/me", get(me).patch(update_me));
 
     sensitive.merge(session)
 }
@@ -56,12 +56,15 @@ async fn signup(
     let mut tx = state.pool.begin().await?;
 
     // Unique index on lower(email) enforces no duplicates → map 23505 to 400.
+    // Default the display name to the email's local part (editable later).
+    let default_name = email.split('@').next().unwrap_or(&email).to_string();
     let user = sqlx::query_as::<_, User>(
-        "INSERT INTO users (email, password_hash) VALUES ($1, $2)
-         RETURNING id, email, created_at",
+        "INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3)
+         RETURNING id, email, display_name, created_at",
     )
     .bind(&email)
     .bind(&password_hash)
+    .bind(&default_name)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| match &e {
@@ -117,10 +120,12 @@ async fn login(
         return Err(AppError::Unauthorized);
     }
 
-    let user = sqlx::query_as::<_, User>("SELECT id, email, created_at FROM users WHERE id = $1")
-        .bind(creds.id)
-        .fetch_one(&state.pool)
-        .await?;
+    let user = sqlx::query_as::<_, User>(
+        "SELECT id, email, display_name, created_at FROM users WHERE id = $1",
+    )
+    .bind(creds.id)
+    .fetch_one(&state.pool)
+    .await?;
 
     let token = create_session(&state.pool, user.id).await?;
     let jar = jar.add(session_cookie(token));
@@ -141,9 +146,33 @@ async fn me(
     State(state): State<AppState>,
     user: AuthUser,
 ) -> Result<Json<User>, AppError> {
-    let user = sqlx::query_as::<_, User>("SELECT id, email, created_at FROM users WHERE id = $1")
-        .bind(user.id)
-        .fetch_one(&state.pool)
-        .await?;
+    let user = sqlx::query_as::<_, User>(
+        "SELECT id, email, display_name, created_at FROM users WHERE id = $1",
+    )
+    .bind(user.id)
+    .fetch_one(&state.pool)
+    .await?;
+    Ok(Json(user))
+}
+
+/// Update the signed-in user's profile (display name). An empty/blank name
+/// clears it (UI falls back to the email).
+async fn update_me(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(body): Json<UpdateProfile>,
+) -> Result<Json<User>, AppError> {
+    let name = body
+        .display_name
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let user = sqlx::query_as::<_, User>(
+        "UPDATE users SET display_name = $2 WHERE id = $1
+         RETURNING id, email, display_name, created_at",
+    )
+    .bind(user.id)
+    .bind(name)
+    .fetch_one(&state.pool)
+    .await?;
     Ok(Json(user))
 }
