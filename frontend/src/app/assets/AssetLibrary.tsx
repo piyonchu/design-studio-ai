@@ -78,12 +78,68 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
   const [exportIds, setExportIds] = useState<string[] | null>(null)
 
   const [recipes, setRecipes] = useState<api.Recipe[]>([])
+  // Keyset pagination + whole-project facet counts (so the rail stays accurate
+  // even though only a page of assets is loaded).
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [facets, setFacets] = useState<api.AssetFacets | null>(null)
+  const [facetsBump, setFacetsBump] = useState(0)
+  const bumpFacets = () => setFacetsBump((n) => n + 1)
+  const PAGE = 50
 
   useEffect(() => {
-    api.listAssets(projectId).then(setAssets).catch(() => {})
     api.listCollections(projectId).then(setCollections).catch(() => {})
     api.listRecipes(projectId).then(setRecipes).catch(() => {})
   }, [projectId])
+
+  // Filter-rail counts over the whole project; refetched after mutations.
+  useEffect(() => {
+    api.getAssetFacets(projectId).then(setFacets).catch(() => {})
+  }, [projectId, facetsBump])
+
+  // First page — reloads whenever a server-side filter changes. Server does the
+  // filtering + ordering; we just render the page.
+  useEffect(() => {
+    let alive = true
+    api
+      .listAssets(projectId, {
+        limit: PAGE,
+        status: [...statuses],
+        role: [...roles],
+        source: [...sources],
+        collection: collectionId,
+      })
+      .then((page) => {
+        if (!alive) return
+        setAssets(page.items)
+        setNextCursor(page.next_cursor)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [projectId, statuses, roles, sources, collectionId])
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const page = await api.listAssets(projectId, {
+        limit: PAGE,
+        cursor: nextCursor,
+        status: [...statuses],
+        role: [...roles],
+        source: [...sources],
+        collection: collectionId,
+      })
+      setAssets((a) => [...a, ...page.items])
+      setNextCursor(page.next_cursor)
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   async function saveRecipe() {
     const ins = instruction.trim()
@@ -142,30 +198,27 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
       .catch(() => {})
   }, [collectionId, collMembers])
 
-  const roleOptions = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const a of assets) if (a.role) m.set(a.role, (m.get(a.role) ?? 0) + 1)
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [assets])
-
-  const sourceOptions = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const a of assets) m.set(a.source_kind, (m.get(a.source_kind) ?? 0) + 1)
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [assets])
-
+  // Rail options/counts come from the whole-project facets, not the loaded page.
+  const roleOptions = useMemo(
+    () => (facets?.role ?? []).map((f) => [f.value, f.count] as [string, number]),
+    [facets],
+  )
+  const sourceOptions = useMemo(
+    () => (facets?.source ?? []).map((f) => [f.value, f.count] as [string, number]),
+    [facets],
+  )
   const statusCounts = useMemo(() => {
     const m = new Map<api.AssetStatus, number>()
-    for (const a of assets) m.set(a.status, (m.get(a.status) ?? 0) + 1)
+    for (const f of facets?.status ?? []) m.set(f.value as api.AssetStatus, f.count)
     return m
-  }, [assets])
+  }, [facets])
 
-  const filtered = useMemo(() => {
-    // When a search is active, server hits are the base (already ranked); the
-    // rail filters narrow further. No client text-match — the server ranks.
-    const base = searchHits ?? assets
+  // What to render. Browse mode: `assets` is already server-filtered + paged.
+  // Search mode: narrow the bounded ranked hits client-side by the rail.
+  const displayed = useMemo(() => {
+    if (searchHits == null) return assets
     const members = collectionId ? collMembers[collectionId] : null
-    return base.filter((a) => {
+    return searchHits.filter((a) => {
       if (roles.size && (!a.role || !roles.has(a.role))) return false
       if (statuses.size && !statuses.has(a.status)) return false
       if (sources.size && !sources.has(a.source_kind)) return false
@@ -210,7 +263,20 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
         return
       }
       if (job.status === 'succeeded') {
-        api.listAssets(projectId).then(setAssets).catch(() => {})
+        api
+          .listAssets(projectId, {
+            limit: PAGE,
+            status: [...statuses],
+            role: [...roles],
+            source: [...sources],
+            collection: collectionId,
+          })
+          .then((page) => {
+            setAssets(page.items)
+            setNextCursor(page.next_cursor)
+          })
+          .catch(() => {})
+        bumpFacets()
         return
       }
       if (job.status === 'failed') {
@@ -232,6 +298,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
         // Audio stays synchronous (no async job kind yet).
         const created = await api.generateAudio(projectId, p, 2)
         setAssets((a) => [...created, ...a])
+        bumpFacets()
       } else {
         // Image generation runs as a background job: enqueue, then watch it
         // finish and refresh the board (the JobsBanner shows progress).
@@ -253,6 +320,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     try {
       const created = await api.uploadAsset(projectId, file, 'base')
       setAssets((a) => [created, ...a])
+      bumpFacets()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Upload failed.')
     } finally {
@@ -279,6 +347,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     try {
       const created = await api.deriveAssets(projectId, baseId, ins, 2)
       setAssets((a) => [...created, ...a])
+      bumpFacets()
     } catch (err) {
       genError(err)
     } finally {
@@ -302,6 +371,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
           genError(err)
         }
       }
+      bumpFacets()
     } finally {
       setBusy(false)
     }
@@ -311,6 +381,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     try {
       const updated = await api.setAssetStatus(id, status)
       setAssets((a) => a.map((x) => (x.id === id ? updated : x)))
+      bumpFacets()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Update failed.')
     }
@@ -341,6 +412,7 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
       const byId = new Map(updated.map((u) => [u.id, u]))
       setAssets((a) => a.map((x) => byId.get(x.id) ?? x))
       setSelected(new Set())
+      bumpFacets()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Batch update failed.')
     } finally {
@@ -485,8 +557,8 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
           </span>
           <p className="text-sm font-medium text-text">Asset Board</p>
           <span className="text-sm text-text-dim">
-            · {filtered.length}
-            {filtered.length !== assets.length && ` of ${assets.length}`}
+            · {displayed.length}
+            {searchHits == null && nextCursor && '+'}
           </span>
           <button
             onClick={toggleSelectMode}
@@ -715,15 +787,15 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <JobsBanner projectId={projectId} />
-          {assets.length === 0 ? (
+          {displayed.length === 0 ? (
             <p className="px-1 py-16 text-center text-sm text-text-dim">
-              No assets yet. Generate one above, or upload a base.
+              {activeFilters > 0
+                ? 'No assets match these filters.'
+                : 'No assets yet. Generate one above, or upload a base.'}
             </p>
-          ) : filtered.length === 0 ? (
-            <p className="px-1 py-16 text-center text-sm text-text-dim">No assets match these filters.</p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {filtered.map((a) => {
+              {displayed.map((a) => {
                 const isSel = selected.has(a.id)
                 const isBase = !selecting && a.id === baseId
                 const ring = isSel || isBase ? 'ring-2 ring-teal' : STATUS_RING[a.status]
@@ -832,6 +904,19 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
               })}
             </div>
           )}
+
+          {/* Load more — browse mode only (search returns a bounded ranked set). */}
+          {searchHits == null && nextCursor && (
+            <div className="mt-5 flex justify-center">
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="rounded-[8px] border border-white/10 px-4 py-2 text-sm text-text-dim transition hover:text-text disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -839,12 +924,14 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
         assetId={inspectId}
         onClose={() => setInspectId(null)}
         onNavigate={setInspectId}
-        onChanged={(updated) =>
+        onChanged={(updated) => {
           setAssets((a) => a.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))
-        }
+          bumpFacets()
+        }}
         onDeleted={(id) => {
           setAssets((a) => a.filter((x) => x.id !== id))
           if (baseId === id) setBaseId(null)
+          bumpFacets()
         }}
       />
 

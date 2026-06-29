@@ -141,8 +141,46 @@ export interface AssetDetail extends Asset {
   derivatives: Asset[]
 }
 
-export const listAssets = (projectId: string) =>
-  request<Asset[]>(`/projects/${projectId}/assets`)
+/** One keyset page of assets; pass `next_cursor` back as `cursor` for the next. */
+export interface AssetPage {
+  items: Asset[]
+  next_cursor: string | null
+}
+export interface FacetCount {
+  value: string
+  count: number
+}
+/** Per-project filter counts (whole project, not just the loaded page). */
+export interface AssetFacets {
+  status: FacetCount[]
+  role: FacetCount[]
+  source: FacetCount[]
+}
+export interface ListAssetsOpts {
+  limit?: number
+  cursor?: string | null
+  status?: string[]
+  role?: string[]
+  source?: string[]
+  collection?: string | null
+}
+
+/** Keyset-paginated, server-filtered board list. */
+export const listAssets = (projectId: string, opts: ListAssetsOpts = {}) => {
+  const p = new URLSearchParams()
+  if (opts.limit) p.set('limit', String(opts.limit))
+  if (opts.cursor) p.set('cursor', opts.cursor)
+  if (opts.status?.length) p.set('status', opts.status.join(','))
+  if (opts.role?.length) p.set('role', opts.role.join(','))
+  if (opts.source?.length) p.set('source', opts.source.join(','))
+  if (opts.collection) p.set('collection', opts.collection)
+  const qs = p.toString()
+  return request<AssetPage>(`/projects/${projectId}/assets${qs ? `?${qs}` : ''}`)
+}
+
+/** Filter-rail counts for a project (status / role / source). */
+export const getAssetFacets = (projectId: string) =>
+  request<AssetFacets>(`/projects/${projectId}/assets/facets`)
 
 export const generateAssets = (projectId: string, prompt: string, count = 1) =>
   request<Asset[]>(`/projects/${projectId}/assets`, {
