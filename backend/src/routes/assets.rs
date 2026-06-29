@@ -156,7 +156,7 @@ pub(crate) async fn run_generate(
         .fetch_one(&state.pool)
         .await?;
         crate::mirror::save(project_id, asset.id, &img.mime, &img.bytes);
-        ai::embeddings::index_asset_soft(&state.pool, &asset).await;
+        ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&img.bytes)).await;
         assets.push(with_url(asset));
     }
     Ok(assets)
@@ -214,7 +214,7 @@ async fn upload(
     .fetch_one(&state.pool)
     .await?;
     crate::mirror::save(project_id, asset.id, &mime, &body);
-    ai::embeddings::index_asset_soft(&state.pool, &asset).await;
+    ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&body)).await;
     Ok((StatusCode::CREATED, Json(with_url(asset))))
 }
 
@@ -420,7 +420,7 @@ async fn derive(
         .execute(&state.pool)
         .await?;
         crate::mirror::save(project_id, asset.id, &img.mime, &img.bytes);
-        ai::embeddings::index_asset_soft(&state.pool, &asset).await;
+        ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&img.bytes)).await;
         out.push(with_url(asset));
     }
     Ok((StatusCode::CREATED, Json(out)))
@@ -487,6 +487,8 @@ async fn update_asset(
     let project_id = project_id.ok_or(AppError::NotFound)?;
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
 
+    let reindex = body.role.is_some() || body.tags.is_some();
+
     let asset = sqlx::query_as::<_, Asset>(&format!(
         "UPDATE assets SET
            status   = COALESCE($1::asset_status, status),
@@ -504,6 +506,18 @@ async fn update_asset(
     .bind(body.exemplar)
     .fetch_one(&state.pool)
     .await?;
+
+    if reindex {
+        let loaded = if ai::embeddings::is_image_asset(&asset) {
+            crate::mirror::read_any(asset.project_id, asset.id)
+                .map(|(b, _)| b)
+                .or(asset_bytes(&state, &asset.s3_key, asset.mime_type.as_deref()).await.ok().map(|(b, _)| b))
+        } else {
+            None
+        };
+        ai::embeddings::index_asset_soft(&state.pool, &asset, loaded.as_deref()).await;
+    }
+
     Ok(Json(with_url(asset)))
 }
 

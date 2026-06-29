@@ -1,23 +1,29 @@
-//! Embedding boundary for RAG / smart search / dedup, behind `EMBED_MOCK`.
+//! Embedding boundary for smart search / dedup / RAG.
 //!
-//! - `EMBED_MOCK=true` (default) → a **feature-hashed bag-of-words** embedder:
-//!   deterministic, free, lexical. Good enough to test the whole pipeline.
-//! - `EMBED_MOCK=false` + `OPENROUTER_API_KEY` → a **real text embedder**
-//!   (`openai/text-embedding-3-small` via OpenRouter `/embeddings`, with the
-//!   `dimensions` param matching our columns). True semantic similarity. Each
-//!   (model, dim, text) is cached on disk (`ai::cache`), so a given text is
-//!   embedded — and paid for — at most once. Visual embeddings use the asset's
-//!   caption (real pixel-CLIP is a future swap behind this same seam).
+//! Each image asset stores **two** vectors in `visual_embeddings`:
+//! - `embedding_text` — caption metadata (role, prompt, derivation, tags)
+//! - `embedding_visual` — pixel/multimodal embedding from the image bytes
+//!
+//! Mock mode (`EMBED_MOCK=true`, default): free deterministic embedders.
+//! Real mode (`EMBED_MOCK=false` + `OPENROUTER_API_KEY`):
+//! - text → `openai/text-embedding-3-small` (or `EMBED_TEXT_MODEL`)
+//! - visual → `google/gemini-embedding-2-preview` (or `EMBED_VISUAL_MODEL`)
+//!
+//! All provider calls are disk-cached under `AI_CACHE_DIR`. Mirrored assets also
+//! get `<asset_id>.embed.json` sidecars when `ASSET_MIRROR_DIR` is set.
 
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use serde_json::json;
+use base64::Engine;
+use image::GenericImageView;
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::ai::cache;
 use crate::error::AppError;
+use crate::mirror;
 use crate::models::Asset;
 
 /// Vector dimensions match the schema (`visual_embeddings` = 768,
@@ -26,30 +32,48 @@ pub const VISUAL_DIM: usize = 768;
 pub const SEMANTIC_DIM: usize = 1024;
 
 const EMBED_URL: &str = "https://openrouter.ai/api/v1/embeddings";
-const DEFAULT_EMBED_MODEL: &str = "openai/text-embedding-3-small";
+const DEFAULT_TEXT_MODEL: &str = "openai/text-embedding-3-small";
+const DEFAULT_VISUAL_MODEL: &str = "google/gemini-embedding-2-preview";
 
 fn embed_mock() -> bool {
     std::env::var("EMBED_MOCK").map(|v| v.trim().eq_ignore_ascii_case("true")).unwrap_or(true)
 }
+
 fn api_key() -> Option<String> {
     std::env::var("OPENROUTER_API_KEY").ok().filter(|k| !k.trim().is_empty())
 }
-fn real_model() -> String {
-    std::env::var("EMBED_MODEL").ok().filter(|m| !m.trim().is_empty()).unwrap_or_else(|| DEFAULT_EMBED_MODEL.to_string())
-}
-fn client() -> &'static reqwest::Client {
-    static C: OnceLock<reqwest::Client> = OnceLock::new();
-    C.get_or_init(|| reqwest::Client::builder().timeout(Duration::from_secs(30)).build().expect("client"))
+
+fn text_model() -> String {
+    std::env::var("EMBED_TEXT_MODEL")
+        .or_else(|_| std::env::var("EMBED_MODEL"))
+        .ok()
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_TEXT_MODEL.to_string())
 }
 
-/// The model tag stored on each embedding row (so a future re-embed can tell
-/// mock rows from real ones).
+fn visual_model() -> String {
+    std::env::var("EMBED_VISUAL_MODEL")
+        .ok()
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_VISUAL_MODEL.to_string())
+}
+
+fn client() -> &'static reqwest::Client {
+    static C: OnceLock<reqwest::Client> = OnceLock::new();
+    C.get_or_init(|| reqwest::Client::builder().timeout(Duration::from_secs(60)).build().expect("client"))
+}
+
+pub fn model_tag_text() -> String {
+    if embed_mock() { "mock-bow-v1".to_string() } else { text_model() }
+}
+
+pub fn model_tag_visual() -> String {
+    if embed_mock() { "mock-pixel-v1".to_string() } else { visual_model() }
+}
+
+/// Legacy alias used by semantic-context rows.
 pub fn model_tag() -> String {
-    if embed_mock() {
-        "mock-bow-v1".to_string()
-    } else {
-        real_model()
-    }
+    model_tag_text()
 }
 
 fn fnv(s: &str) -> u64 {
@@ -61,7 +85,20 @@ fn fnv(s: &str) -> u64 {
     h
 }
 
-/// The deterministic, free feature-hashed embedder (mock + the unit-test core).
+fn fnv_bytes(bytes: &[u8]) -> u64 {
+    let mut h = 1469598103934665603u64;
+    for b in bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(1099511628211);
+    }
+    h
+}
+
+pub fn bytes_sha(bytes: &[u8]) -> String {
+    format!("{:016x}-{}", fnv_bytes(bytes), bytes.len())
+}
+
+/// The deterministic, free feature-hashed text embedder (mock).
 pub fn embed_mock_vec(text: &str, dim: usize) -> Option<Vec<f32>> {
     let mut v = vec![0f32; dim];
     let mut any = false;
@@ -75,52 +112,121 @@ pub fn embed_mock_vec(text: &str, dim: usize) -> Option<Vec<f32>> {
     if !any {
         return None;
     }
-    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm > 0.0 {
-        for x in &mut v {
-            *x /= norm;
-        }
-    }
+    normalize(&mut v);
     Some(v)
 }
 
-/// Real text embedding via OpenRouter, cached by (model, dim, text). Returns
-/// None on any failure so indexing degrades gracefully (search just returns less).
-async fn embed_real(text: &str, dim: usize) -> Option<Vec<f32>> {
-    let key = api_key()?;
-    let model = real_model();
-    let ck = cache::key(&[&model, &dim.to_string(), text]);
-    if let Some(hit) = cache::get("embed", &ck) {
-        return parse_csv(&hit);
-    }
-    let body = json!({ "model": model, "input": text, "dimensions": dim });
-    let resp = client().post(EMBED_URL).bearer_auth(&key).json(&body).send().await.ok()?;
-    if !resp.status().is_success() {
-        tracing::warn!(status = %resp.status(), "embedding request failed");
+/// Deterministic pixel embedder for mock mode — decodes raster images when
+/// possible, otherwise hashes raw bytes.
+pub fn embed_image_mock(bytes: &[u8], dim: usize) -> Option<Vec<f32>> {
+    if bytes.is_empty() {
         return None;
     }
-    let v: serde_json::Value = resp.json().await.ok()?;
-    let arr = v["data"][0]["embedding"].as_array()?;
-    let vec: Vec<f32> = arr.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect();
-    if vec.len() != dim {
-        tracing::warn!(got = vec.len(), want = dim, "embedding dim mismatch");
-        return None;
+    let mut v = vec![0f32; dim];
+
+    if let Ok(img) = image::load_from_memory(bytes) {
+        let (w, h) = img.dimensions();
+        let step_x = (w / 16).max(1);
+        let step_y = (h / 16).max(1);
+        for y in (0..h).step_by(step_y as usize) {
+            for x in (0..w).step_by(step_x as usize) {
+                let px = img.get_pixel(x, y).0;
+                for (i, &c) in px.iter().enumerate() {
+                    let h = fnv_bytes(&[c, (x % 256) as u8, (y % 256) as u8, i as u8]);
+                    let idx = (h % dim as u64) as usize;
+                    let sign = if (h >> 40) & 1 == 0 { 1.0 } else { -1.0 };
+                    v[idx] += sign * (c as f32 / 255.0);
+                }
+            }
+        }
+    } else {
+        for chunk in bytes.chunks(64) {
+            let h = fnv_bytes(chunk);
+            let idx = (h % dim as u64) as usize;
+            let sign = if (h >> 40) & 1 == 0 { 1.0 } else { -1.0 };
+            v[idx] += sign;
+        }
     }
-    cache::put("embed", &ck, &vec.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
-    Some(vec)
+
+    normalize(&mut v);
+    Some(v)
+}
+
+fn normalize(v: &mut [f32]) {
+    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        for x in v {
+            *x /= norm;
+        }
+    }
 }
 
 fn parse_csv(s: &str) -> Option<Vec<f32>> {
     let v: Vec<f32> = s.split(',').filter_map(|p| p.parse().ok()).collect();
-    if v.is_empty() {
-        None
-    } else {
-        Some(v)
-    }
+    if v.is_empty() { None } else { Some(v) }
 }
 
-/// Embed text → an L2-normalized (mock) or provider (real) vector, or `None`
-/// when there's nothing to embed / no provider. Async so the real path can do IO.
+fn vec_csv(v: &[f32]) -> String {
+    v.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+}
+
+async fn embed_openrouter_text(model: &str, text: &str, dim: usize, namespace: &str) -> Option<Vec<f32>> {
+    let key = api_key()?;
+    let ck = cache::key(&[model, &dim.to_string(), text]);
+    if let Some(hit) = cache::get(namespace, &ck) {
+        return parse_csv(&hit);
+    }
+    let body = json!({ "model": model, "input": text, "dimensions": dim });
+    let vec = post_embedding(&key, body).await?;
+    if vec.len() != dim {
+        tracing::warn!(got = vec.len(), want = dim, "text embedding dim mismatch");
+        return None;
+    }
+    cache::put(namespace, &ck, &vec_csv(&vec));
+    Some(vec)
+}
+
+/// Multimodal embedding (text and/or image) via OpenRouter — used for visual
+/// pixels and cross-modal query vectors in the visual embedding space.
+async fn embed_openrouter_multimodal(
+    model: &str,
+    content: Value,
+    dim: usize,
+    cache_parts: &[&str],
+    namespace: &str,
+) -> Option<Vec<f32>> {
+    let key = api_key()?;
+    let ck = cache::key(cache_parts);
+    if let Some(hit) = cache::get(namespace, &ck) {
+        return parse_csv(&hit);
+    }
+    let body = json!({
+        "model": model,
+        "input": [{ "content": content }],
+        "dimensions": dim,
+        "encoding_format": "float"
+    });
+    let vec = post_embedding(&key, body).await?;
+    if vec.len() != dim {
+        tracing::warn!(got = vec.len(), want = dim, "multimodal embedding dim mismatch");
+        return None;
+    }
+    cache::put(namespace, &ck, &vec_csv(&vec));
+    Some(vec)
+}
+
+async fn post_embedding(key: &str, body: Value) -> Option<Vec<f32>> {
+    let resp = client().post(EMBED_URL).bearer_auth(key).json(&body).send().await.ok()?;
+    if !resp.status().is_success() {
+        tracing::warn!(status = %resp.status(), "embedding request failed");
+        return None;
+    }
+    let v: Value = resp.json().await.ok()?;
+    let arr = v["data"][0]["embedding"].as_array()?;
+    Some(arr.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect())
+}
+
+/// Embed caption text for the `embedding_text` column.
 pub async fn embed_text(text: &str, dim: usize) -> Option<Vec<f32>> {
     if text.trim().is_empty() {
         return None;
@@ -128,12 +234,62 @@ pub async fn embed_text(text: &str, dim: usize) -> Option<Vec<f32>> {
     if embed_mock() {
         embed_mock_vec(text, dim)
     } else {
-        embed_real(text, dim).await
+        embed_openrouter_text(&text_model(), text, dim, "embed-text").await
     }
 }
 
-/// pgvector text form: `[a,b,c]`. Bound as text and cast `$n::vector` in SQL so
-/// we need no extra crate.
+/// Embed image bytes for the `embedding_visual` column.
+pub async fn embed_image(bytes: &[u8], mime: &str, dim: usize) -> Option<Vec<f32>> {
+    if bytes.is_empty() {
+        return None;
+    }
+    if embed_mock() {
+        return embed_image_mock(bytes, dim);
+    }
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    let data_url = format!("data:{mime};base64,{b64}");
+    let content = json!([{ "type": "image_url", "image_url": { "url": data_url } }]);
+    let sha = bytes_sha(bytes);
+    embed_openrouter_multimodal(
+        &visual_model(),
+        content,
+        dim,
+        &[&visual_model(), &dim.to_string(), "image", &sha],
+        "embed-visual",
+    )
+    .await
+}
+
+/// Query vector for comparing against `embedding_visual` (cross-modal in real
+/// mode via the multimodal model's text path).
+pub async fn embed_query_visual_space(text: &str, dim: usize) -> Option<Vec<f32>> {
+    if text.trim().is_empty() {
+        return None;
+    }
+    if embed_mock() {
+        return embed_mock_vec(text, dim);
+    }
+    let content = json!([{ "type": "text", "text": text }]);
+    embed_openrouter_multimodal(
+        &visual_model(),
+        content,
+        dim,
+        &[&visual_model(), &dim.to_string(), "query", text],
+        "embed-visual-query",
+    )
+    .await
+}
+
+pub fn is_image_asset(a: &Asset) -> bool {
+    matches!(
+        a.kind,
+        crate::models::AssetKind::Image
+            | crate::models::AssetKind::Icon
+            | crate::models::AssetKind::Illustration
+            | crate::models::AssetKind::Svg
+    ) || a.mime_type.as_deref().is_some_and(|m| m.starts_with("image/"))
+}
+
 pub fn to_pgvector(v: &[f32]) -> String {
     let mut s = String::with_capacity(v.len() * 8);
     s.push('[');
@@ -147,8 +303,7 @@ pub fn to_pgvector(v: &[f32]) -> String {
     s
 }
 
-/// The text we embed for an asset — its searchable identity. Works for imports
-/// (role/tags) just as well as generated assets (prompt/derivation).
+/// The text we embed for an asset — its searchable identity.
 pub fn caption_from(a: &Asset) -> String {
     let mut parts: Vec<&str> = Vec::new();
     if let Some(r) = a.role.as_deref() {
@@ -166,43 +321,85 @@ pub fn caption_from(a: &Asset) -> String {
     parts.join(" ")
 }
 
-/// Index (or re-index) one asset's embedding. No-op when the caption is empty or
-/// no embedder is configured — never fails the caller's main operation.
-pub async fn index_asset(pool: &PgPool, asset_id: Uuid, caption: &str) -> Result<(), AppError> {
-    let Some(v) = embed_text(caption, VISUAL_DIM).await else {
-        return Ok(());
+/// Index (or re-index) one asset's text + visual embeddings.
+pub async fn index_asset_with_bytes(
+    pool: &PgPool,
+    asset: &Asset,
+    image_bytes: Option<&[u8]>,
+) -> Result<(), AppError> {
+    let caption = caption_from(asset);
+    let text_vec = if caption.trim().is_empty() {
+        None
+    } else {
+        embed_text(&caption, VISUAL_DIM).await
     };
-    let pg = to_pgvector(&v);
+
+    let visual_vec = if is_image_asset(asset) {
+        if let Some(bytes) = image_bytes {
+            let mime = asset.mime_type.as_deref().unwrap_or("image/png");
+            embed_image(bytes, mime, VISUAL_DIM).await
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if text_vec.is_none() && visual_vec.is_none() {
+        return Ok(());
+    }
+
+    let text_pg = text_vec.as_ref().map(|v| to_pgvector(v));
+    let visual_pg = visual_vec.as_ref().map(|v| to_pgvector(v));
+    let m_text = text_vec.as_ref().map(|_| model_tag_text());
+    let m_visual = visual_vec.as_ref().map(|_| model_tag_visual());
+
     sqlx::query("DELETE FROM visual_embeddings WHERE asset_id = $1")
-        .bind(asset_id)
+        .bind(asset.id)
         .execute(pool)
         .await?;
-    sqlx::query("INSERT INTO visual_embeddings (asset_id, embedding, model) VALUES ($1, $2::vector, $3)")
-        .bind(asset_id)
-        .bind(pg)
-        .bind(model_tag())
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "INSERT INTO visual_embeddings (asset_id, embedding_text, embedding_visual, model_text, model_visual)
+         VALUES ($1, $2::vector, $3::vector, $4, $5)",
+    )
+    .bind(asset.id)
+    .bind(text_pg)
+    .bind(visual_pg)
+    .bind(&m_text)
+    .bind(&m_visual)
+    .execute(pool)
+    .await?;
+
+    let sha = image_bytes.map(bytes_sha);
+    mirror::save_embedding_sidecar(
+        asset.project_id,
+        asset.id,
+        &caption,
+        asset.mime_type.as_deref(),
+        sha.as_deref(),
+        m_text.as_deref(),
+        m_visual.as_deref(),
+        text_vec.as_deref(),
+        visual_vec.as_deref(),
+    );
+
     Ok(())
 }
 
-/// Best-effort index of an asset across BOTH stores: the visual embedding (for
-/// search/dedup) and a semantic-context row for its prompt/derivation (so
-/// "why does this asset exist?" retrieval can find it). Never fails the caller.
-pub async fn index_asset_soft(pool: &PgPool, a: &Asset) {
-    if let Err(e) = index_asset(pool, a.id, &caption_from(a)).await {
-        tracing::warn!(error = %e, asset = %a.id, "asset visual embedding failed (non-fatal)");
+/// Best-effort dual index + semantic context row. Never fails the caller.
+pub async fn index_asset_soft(pool: &PgPool, asset: &Asset, image_bytes: Option<&[u8]>) {
+    if let Err(e) = index_asset_with_bytes(pool, asset, image_bytes).await {
+        tracing::warn!(error = %e, asset = %asset.id, "asset embedding index failed (non-fatal)");
     }
-    let rationale = a.prompt.as_deref().or(a.derivation.as_deref());
+    let rationale = asset.prompt.as_deref().or(asset.derivation.as_deref());
     if let Some(text) = rationale {
-        if let Err(e) = index_semantic(pool, a.project_id, "asset_prompt", Some(a.id), text).await {
-            tracing::warn!(error = %e, asset = %a.id, "asset semantic embedding failed (non-fatal)");
+        if let Err(e) = index_semantic(pool, asset.project_id, "asset_prompt", Some(asset.id), text).await {
+            tracing::warn!(error = %e, asset = %asset.id, "asset semantic embedding failed (non-fatal)");
         }
     }
 }
 
-/// Index a text snippet into the semantic-context store. Re-indexing the same
-/// (source_kind, source_id) replaces the old row. No-op when empty / no embedder.
+/// Index a text snippet into the semantic-context store.
 pub async fn index_semantic(
     pool: &PgPool,
     project_id: Uuid,
@@ -236,12 +433,24 @@ pub async fn index_semantic(
     Ok(())
 }
 
+pub async fn index_semantic_soft(
+    pool: &PgPool,
+    project_id: Uuid,
+    source_kind: &str,
+    source_id: Option<Uuid>,
+    content: &str,
+) {
+    if let Err(e) = index_semantic(pool, project_id, source_kind, source_id, content).await {
+        tracing::warn!(error = %e, kind = source_kind, "semantic embedding failed (non-fatal)");
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{embed_mock_vec as embed_text, to_pgvector, VISUAL_DIM};
+    use super::{embed_image_mock, embed_mock_vec as embed_text, bytes_sha, to_pgvector, VISUAL_DIM};
 
     fn cosine(a: &[f32], b: &[f32]) -> f32 {
-        a.iter().zip(b).map(|(x, y)| x * y).sum() // vectors are L2-normalized
+        a.iter().zip(b).map(|(x, y)| x * y).sum()
     }
 
     #[test]
@@ -260,33 +469,20 @@ mod tests {
     }
 
     #[test]
-    fn empty_or_tokenless_is_none() {
-        assert!(embed_text("", VISUAL_DIM).is_none());
-        assert!(embed_text("  ! ? ", VISUAL_DIM).is_none());
+    fn distinct_images_differ() {
+        let a = embed_image_mock(&[1, 2, 3, 4, 5, 6, 7, 8], VISUAL_DIM).unwrap();
+        let b = embed_image_mock(&[9, 8, 7, 6, 5, 4, 3, 2], VISUAL_DIM).unwrap();
+        assert!(cosine(&a, &b) < 0.99);
     }
 
     #[test]
-    fn vectors_are_normalized() {
-        let v = embed_text("hello world foo bar", VISUAL_DIM).unwrap();
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!((norm - 1.0).abs() < 1e-4);
+    fn bytes_sha_is_stable() {
+        assert_eq!(bytes_sha(b"abc"), bytes_sha(b"abc"));
+        assert_ne!(bytes_sha(b"abc"), bytes_sha(b"abcd"));
     }
 
     #[test]
     fn pgvector_text_format() {
         assert_eq!(to_pgvector(&[1.0, 2.5]), "[1.000000,2.500000]");
-    }
-}
-
-/// Fire-and-forget semantic index (logs on failure).
-pub async fn index_semantic_soft(
-    pool: &PgPool,
-    project_id: Uuid,
-    source_kind: &str,
-    source_id: Option<Uuid>,
-    content: &str,
-) {
-    if let Err(e) = index_semantic(pool, project_id, source_kind, source_id, content).await {
-        tracing::warn!(error = %e, kind = source_kind, "semantic embedding failed (non-fatal)");
     }
 }

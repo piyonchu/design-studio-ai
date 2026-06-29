@@ -54,7 +54,7 @@ async fn generate(
         .fetch_one(&state.pool)
         .await?;
         crate::mirror::save(project_id, asset.id, &clip.mime, &clip.bytes);
-        ai::embeddings::index_asset_soft(&state.pool, &asset).await;
+        ai::embeddings::index_asset_soft(&state.pool, &asset, None).await;
         assets.push(with_url(asset));
     }
     Ok((StatusCode::CREATED, Json(assets)))
