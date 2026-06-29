@@ -42,6 +42,7 @@ export function AssetInspector({
     setError(null)
     setSaved(false)
     setConfirming(false)
+    setDeleting(false)
     setSelectedCol('')
     setAdded(null)
     api
