@@ -13,8 +13,8 @@ use crate::ai;
 use crate::auth::{self, AuthUser};
 use crate::error::AppError;
 use crate::models::{
-    Asset, AssetDetail, AssetVersion, DeriveAssets, GenerateAssets, RegenerateAsset, UpdateAsset,
-    WorkspaceRole,
+    Asset, AssetDetail, AssetVersion, DeriveAssets, GenerateAssets, InpaintRequest, RegenerateAsset,
+    UpdateAsset, WorkspaceRole,
 };
 use crate::AppState;
 
@@ -30,6 +30,7 @@ pub fn router() -> Router<AppState> {
         .route("/assets/:id/versions/:vid/restore", post(restore_version))
         .route("/assets/:id/regenerate", post(regenerate))
         .route("/assets/:id/edit", post(edit_asset))
+        .route("/assets/:id/inpaint", post(inpaint))
 }
 
 pub(crate) const ASSET_COLS: &str =
@@ -872,6 +873,82 @@ async fn edit_asset(
     crate::mirror::save(project_id, asset.id, &out_mime, &out_bytes);
     ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&out_bytes)).await;
     Ok(Json(with_url(asset)))
+}
+
+/// Masked / inpaint edit (B2): regenerate only the brushed region per a prompt
+/// and record the result as a **new version**. Behind the `ai::edit` provider
+/// seam — free with `EDIT_MOCK=true` (default), spend-gated once a real provider
+/// is wired. Editor+.
+async fn inpaint(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+    Json(body): Json<InpaintRequest>,
+) -> Result<Json<Asset>, AppError> {
+    let row: Option<(Uuid, String, Option<String>)> =
+        sqlx::query_as("SELECT project_id, s3_key, mime_type FROM assets WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let (project_id, s3_key, mime) = row.ok_or(AppError::NotFound)?;
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
+
+    let prompt = body.prompt.trim();
+    if prompt.is_empty() {
+        return Err(AppError::BadRequest("prompt required".into()));
+    }
+    crate::moderation::check_prompt(prompt)?;
+    // Only real provider edits cost; the mock is free (don't gate dev/demo).
+    if !ai::edit::is_mock() {
+        crate::guardrail::check_can_spend(&state, project_id, 1).await?;
+    }
+
+    let (base_bytes, base_mime) = asset_bytes(&state, &s3_key, mime.as_deref()).await?;
+    if !is_raster(&base_mime) {
+        return Err(AppError::BadRequest("only raster images can be inpainted".into()));
+    }
+    let mask_bytes = decode_data_url(&body.mask)?;
+
+    let img = ai::edit::inpaint(&base_bytes, &mask_bytes, prompt).await?;
+
+    let new_key = if state.storage.configured() {
+        let key = format!("projects/{project_id}/assets/{}", Uuid::new_v4());
+        state.storage.put(&key, &img.bytes, &img.mime).await?;
+        key
+    } else {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&img.bytes);
+        format!("data:{};base64,{b64}", img.mime)
+    };
+
+    record_version(
+        &state.pool,
+        id,
+        &new_key,
+        &img.mime,
+        Some(prompt),
+        Some(&format!("Inpainted: {prompt}")),
+        Some(user.id),
+    )
+    .await?;
+
+    let asset = sqlx::query_as::<_, Asset>(&format!("SELECT {ASSET_COLS} FROM assets WHERE id = $1"))
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+    crate::mirror::save(project_id, asset.id, &img.mime, &img.bytes);
+    ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&img.bytes)).await;
+    Ok(Json(with_url(asset)))
+}
+
+/// Decode a `data:[mime];base64,XXXX` URL (or a bare base64 string) to bytes.
+fn decode_data_url(s: &str) -> Result<Vec<u8>, AppError> {
+    let payload = match s.strip_prefix("data:") {
+        Some(rest) => rest.split_once(',').map(|(_, b)| b).unwrap_or(rest),
+        None => s,
+    };
+    base64::engine::general_purpose::STANDARD
+        .decode(payload.trim())
+        .map_err(|e| AppError::BadRequest(format!("invalid mask data: {e}")))
 }
 
 /// Load an asset's raw bytes to use as a derivation reference: object storage by

@@ -3,6 +3,7 @@
 
 pub mod audio;
 pub mod cache;
+pub mod edit;
 pub mod embeddings;
 pub mod images;
 pub mod llm;

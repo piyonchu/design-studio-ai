@@ -412,6 +412,14 @@ pub struct RegenerateAsset {
     pub prompt: Option<String>,
 }
 
+/// Masked / inpaint edit (B2): a mask image (data URL or base64 PNG, painted
+/// where the region should change) + what it should become.
+#[derive(Debug, Deserialize)]
+pub struct InpaintRequest {
+    pub mask: String,
+    pub prompt: String,
+}
+
 // ── Collections ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, FromRow)]

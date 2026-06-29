@@ -42,7 +42,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | Pro · A2 | **Per-asset version history + rollback + diff** (the headline) — `asset_versions` + head pointer; regenerate appends a version; restore is non-destructive; before/after slider | ✅ |
 | Pro · A3 | Reposition UI/landing — library/folders/review as the hero | ⏳ |
 | Pro · B1 | **Deterministic edits** — free, instant, model-free (crop/resize/flip/rotate/recolor/bg-remove/convert); each edit = a new version | ✅ |
-| Pro · B2 | Masked/inpaint edit — UX + provider seam (mock now; fal.ai/Replicate later) | ⏳ |
+| Pro · B2 | **Masked/inpaint edit** — brush-a-region UX + `ai::edit` provider seam (mock alters only the masked region → new version); real provider (fal.ai/Replicate) deferred behind `EDIT_MOCK` | ✅ (seam + mock) |
 | Pro · C | **Permissions** — per-project role overrides + reviewer gate (editors submit, reviewers approve); layered on workspace roles | ✅ |
 | Pro · D | Consistency depth — smart-exemplar → ControlNet → per-project LoRA | 💡 |
 

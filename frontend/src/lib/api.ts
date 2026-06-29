@@ -369,6 +369,17 @@ export type EditOp =
 export const editAsset = (assetId: string, op: EditOp) =>
   request<Asset>(`/assets/${assetId}/edit`, { method: 'POST', body: JSON.stringify(op) })
 
+/**
+ * Masked / inpaint edit (B2): regenerate only the painted region per `prompt`.
+ * `mask` is a PNG data URL, opaque where the region should change. Returns the
+ * asset with its new head version. Free in mock mode (`EDIT_MOCK`).
+ */
+export const inpaintAsset = (assetId: string, mask: string, prompt: string) =>
+  request<Asset>(`/assets/${assetId}/inpaint`, {
+    method: 'POST',
+    body: JSON.stringify({ mask, prompt }),
+  })
+
 /** Upload a base/reference image. Raw bytes body, not multipart. */
 export const uploadAsset = async (
   projectId: string,

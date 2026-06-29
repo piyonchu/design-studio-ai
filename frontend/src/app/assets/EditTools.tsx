@@ -7,10 +7,12 @@ import {
   CircleHalfIcon,
   SwatchesIcon,
   ScissorsIcon,
+  PaintBrushIcon,
   SpinnerGapIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
+import { InpaintDialog } from './InpaintDialog'
 
 /**
  * Deterministic edits (Pro pipeline B1) — free, instant, model-free transforms.
@@ -28,6 +30,7 @@ export function EditTools({
   const [error, setError] = useState<string | null>(null)
   const [w, setW] = useState('')
   const [h, setH] = useState('')
+  const [inpainting, setInpainting] = useState(false)
 
   async function run(label: string, op: api.EditOp) {
     if (busy) return
@@ -70,7 +73,22 @@ export function EditTools({
         <PencilRulerIcon size={14} />
         Edit
         <span className="text-[10px]">· free · saves a new version</span>
+        <button
+          onClick={() => setInpainting(true)}
+          className="ml-auto inline-flex items-center gap-1 rounded-[7px] border border-teal/30 bg-teal/10 px-2 py-1 text-[11px] text-teal-bright transition hover:bg-teal/15"
+        >
+          <PaintBrushIcon size={12} weight="fill" />
+          Edit a region
+        </button>
       </div>
+
+      {inpainting && (
+        <InpaintDialog
+          asset={asset}
+          onClose={() => setInpainting(false)}
+          onSaved={(updated) => onChanged(updated)}
+        />
+      )}
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         <Tool id="flh" icon={FlipHorizontalIcon} label="Flip H" op={{ op: 'flip', axis: 'horizontal' }} />
