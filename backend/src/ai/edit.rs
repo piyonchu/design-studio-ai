@@ -10,7 +10,7 @@
 
 use std::io::Cursor;
 
-use image::{GenericImageView, ImageFormat, RgbaImage};
+use image::{GenericImageView, ImageFormat};
 
 use crate::ai::images::GeneratedImage;
 use crate::error::AppError;
@@ -111,7 +111,7 @@ mod tests {
     use super::*;
 
     fn png(color: [u8; 4], w: u32, h: u32) -> Vec<u8> {
-        let img = RgbaImage::from_pixel(w, h, image::Rgba(color));
+        let img = image::RgbaImage::from_pixel(w, h, image::Rgba(color));
         let mut buf = Cursor::new(Vec::new());
         image::DynamicImage::ImageRgba8(img).write_to(&mut buf, ImageFormat::Png).unwrap();
         buf.into_inner()
@@ -123,7 +123,7 @@ mod tests {
         let base = png([200, 200, 200, 255], 4, 4);
 
         // Mask: paint only the top-left pixel white-opaque; rest transparent.
-        let mut mask = RgbaImage::from_pixel(4, 4, image::Rgba([0, 0, 0, 0]));
+        let mut mask = image::RgbaImage::from_pixel(4, 4, image::Rgba([0, 0, 0, 0]));
         mask.put_pixel(0, 0, image::Rgba([255, 255, 255, 255]));
         let mut mbuf = Cursor::new(Vec::new());
         image::DynamicImage::ImageRgba8(mask).write_to(&mut mbuf, ImageFormat::Png).unwrap();
