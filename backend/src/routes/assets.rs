@@ -26,7 +26,7 @@ pub fn router() -> Router<AppState> {
 }
 
 pub(crate) const ASSET_COLS: &str =
-    "id, project_id, name, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, exemplar, created_at";
+    "id, project_id, name, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, exemplar, folder_id, created_at";
 
 /// 10 MB cap on a single uploaded asset.
 const MAX_UPLOAD: usize = 10 * 1024 * 1024;
@@ -239,6 +239,10 @@ struct ListQuery {
     /// Restrict to members of this collection.
     #[serde(default)]
     collection: Option<Uuid>,
+    /// Restrict to a folder: a folder id, or the literal `root` for unfiled
+    /// assets (folder_id IS NULL). Absent → no folder filter (all assets).
+    #[serde(default)]
+    folder: Option<String>,
 }
 
 fn csv(s: &Option<String>) -> Vec<String> {
@@ -291,6 +295,17 @@ async fn list(
         qb.push(" AND id IN (SELECT asset_id FROM collection_items WHERE collection_id = ")
             .push_bind(cid)
             .push(")");
+    }
+    match q.folder.as_deref() {
+        Some("root") => {
+            qb.push(" AND folder_id IS NULL");
+        }
+        Some(f) => {
+            if let Ok(fid) = f.parse::<Uuid>() {
+                qb.push(" AND folder_id = ").push_bind(fid);
+            }
+        }
+        None => {}
     }
     if let Some((ts, id)) = q.cursor.as_deref().and_then(decode_cursor) {
         qb.push(" AND (created_at, id) < (").push_bind(ts).push(", ").push_bind(id).push(")");
@@ -488,13 +503,35 @@ async fn update_asset(
 
     let reindex = body.role.is_some() || body.tags.is_some();
 
+    // Folder moves use a sentinel: $7 is the new id (may be null = root) and $8
+    // flags whether the move was requested at all — so an absent field leaves
+    // folder_id untouched while an explicit null clears it.
+    let (folder_id, set_folder) = match body.folder_id {
+        Some(v) => (v, true),
+        None => (None, false),
+    };
+    if let Some(fid) = folder_id {
+        // A move target must be a folder in the same project.
+        let ok: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM folders WHERE id = $1 AND project_id = $2",
+        )
+        .bind(fid)
+        .bind(project_id)
+        .fetch_optional(&state.pool)
+        .await?;
+        if ok.is_none() {
+            return Err(AppError::BadRequest("folder not found in this project".into()));
+        }
+    }
+
     let asset = sqlx::query_as::<_, Asset>(&format!(
         "UPDATE assets SET
-           status   = COALESCE($1::asset_status, status),
-           role     = COALESCE($2::text, role),
-           tags     = COALESCE($3::text[], tags),
-           name     = COALESCE($5::text, name),
-           exemplar = COALESCE($6::boolean, exemplar)
+           status    = COALESCE($1::asset_status, status),
+           role      = COALESCE($2::text, role),
+           tags      = COALESCE($3::text[], tags),
+           name      = COALESCE($5::text, name),
+           exemplar  = COALESCE($6::boolean, exemplar),
+           folder_id = CASE WHEN $8 THEN $7::uuid ELSE folder_id END
          WHERE id = $4 RETURNING {ASSET_COLS}"
     ))
     .bind(body.status)
@@ -503,6 +540,8 @@ async fn update_asset(
     .bind(id)
     .bind(body.name)
     .bind(body.exemplar)
+    .bind(folder_id)
+    .bind(set_folder)
     .fetch_one(&state.pool)
     .await?;
 

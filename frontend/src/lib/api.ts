@@ -170,6 +170,7 @@ export interface Asset {
   derivation: string | null // for derivatives: the preset/instruction used
   canon_version_id: string | null
   exemplar: boolean // approved style anchor — conditions future generation
+  folder_id: string | null // home folder in the project tree; null = root
   created_at: string
 }
 
@@ -201,6 +202,8 @@ export interface ListAssetsOpts {
   role?: string[]
   source?: string[]
   collection?: string | null
+  /** A folder id, or the literal `'root'` for unfiled assets. */
+  folder?: string | null
 }
 
 /** Keyset-paginated, server-filtered board list. */
@@ -212,6 +215,7 @@ export const listAssets = (projectId: string, opts: ListAssetsOpts = {}) => {
   if (opts.role?.length) p.set('role', opts.role.join(','))
   if (opts.source?.length) p.set('source', opts.source.join(','))
   if (opts.collection) p.set('collection', opts.collection)
+  if (opts.folder) p.set('folder', opts.folder)
   const qs = p.toString()
   return request<AssetPage>(`/projects/${projectId}/assets${qs ? `?${qs}` : ''}`)
 }
@@ -258,7 +262,14 @@ export const getAsset = (id: string) => request<AssetDetail>(`/assets/${id}`)
 /** Patch editable metadata. Only provided fields change. */
 export const updateAsset = (
   id: string,
-  patch: { name?: string; role?: string; tags?: string[]; exemplar?: boolean },
+  patch: {
+    name?: string
+    role?: string
+    tags?: string[]
+    exemplar?: boolean
+    /** Move to a folder; `null` moves to the project root. */
+    folder_id?: string | null
+  },
 ) =>
   request<Asset>(`/assets/${id}`, {
     method: 'PATCH',
@@ -345,6 +356,44 @@ export const removeFromCollection = (id: string, assetId: string) =>
 
 export const deleteCollection = (id: string) =>
   request<void>(`/collections/${id}`, { method: 'DELETE' })
+
+// ── Folders (asset tree — an asset's canonical home) ──────────────────────────
+export interface Folder {
+  id: string
+  project_id: string
+  parent_id: string | null
+  name: string
+  created_at: string
+}
+/** A folder list row carrying the count of assets filed directly in it. */
+export interface FolderNode extends Folder {
+  asset_count: number
+}
+
+/** The project's folder tree as a flat list (nest by `parent_id`). */
+export const listFolders = (projectId: string) =>
+  request<FolderNode[]>(`/projects/${projectId}/folders`)
+
+export const createFolder = (projectId: string, name: string, parentId?: string | null) =>
+  request<Folder>(`/projects/${projectId}/folders`, {
+    method: 'POST',
+    body: JSON.stringify({ name, parent_id: parentId ?? null }),
+  })
+
+/** Rename and/or reparent. `parent_id: null` moves the folder to the root. */
+export const updateFolder = (
+  id: string,
+  patch: { name?: string; parent_id?: string | null },
+) =>
+  request<Folder>(`/folders/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
+
+/** Delete a folder; its subtree cascades and contained assets are unfiled. */
+export const deleteFolder = (id: string) =>
+  request<void>(`/folders/${id}`, { method: 'DELETE' })
+
+/** Move an asset into a folder (or to the root with `null`). */
+export const moveAsset = (assetId: string, folderId: string | null) =>
+  updateAsset(assetId, { folder_id: folderId })
 
 // ── Search / RAG ─────────────────────────────────────────────────────────────
 export interface ScoredAsset extends Asset {

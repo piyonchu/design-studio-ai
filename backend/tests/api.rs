@@ -275,3 +275,122 @@ async fn async_generation_job_runs_to_success() {
     let ids = v["result"]["asset_ids"].as_array().expect("result.asset_ids");
     assert_eq!(ids.len(), 2, "produced two assets");
 }
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn folders_tree_move_and_cascade() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("AUDIO_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    // signup → workspace → project
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"Folders\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    // root folder + subfolder
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/folders"),
+        Some(&cookie),
+        Some("{\"name\":\"Characters\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "create root folder");
+    let parent = field(&b, "id").to_owned();
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/folders"),
+        Some(&cookie),
+        Some(&format!("{{\"name\":\"Heroes\",\"parent_id\":\"{parent}\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "create subfolder");
+    let child = field(&b, "id").to_owned();
+
+    // generate one asset, then move it into the subfolder
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/assets"),
+        Some(&cookie),
+        Some("{\"prompt\":\"a knight\",\"count\":1}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "generate");
+    let aid = all_ids(&b)[0].clone();
+
+    let (st, b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/assets/{aid}"),
+        Some(&cookie),
+        Some(&format!("{{\"folder_id\":\"{child}\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "move asset into folder");
+    assert_eq!(field(&b, "folder_id"), child, "asset now filed in subfolder");
+
+    // listing scoped to the subfolder contains the asset; root listing does not
+    let (_st, b, _) =
+        send(&router, "GET", &format!("/projects/{pid}/assets?folder={child}"), Some(&cookie), None).await;
+    assert!(all_ids(&b).contains(&aid), "asset shows under its folder");
+    let (_st, b, _) =
+        send(&router, "GET", &format!("/projects/{pid}/assets?folder=root"), Some(&cookie), None).await;
+    assert!(!all_ids(&b).contains(&aid), "asset no longer at root");
+
+    // the folder list carries the direct asset count
+    let (_st, b, _) = send(&router, "GET", &format!("/projects/{pid}/folders"), Some(&cookie), None).await;
+    let folders: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    let heroes = folders.as_array().unwrap().iter().find(|f| f["id"] == child).unwrap();
+    assert_eq!(heroes["asset_count"], 1, "subfolder reports one asset");
+
+    // reparent cycle (move parent under its own descendant) is rejected
+    let (st, _b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/folders/{parent}"),
+        Some(&cookie),
+        Some(&format!("{{\"parent_id\":\"{child}\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "cycle rejected");
+
+    // deleting the root folder cascades the subtree and UNFILES the asset
+    let (st, _b, _) =
+        send(&router, "DELETE", &format!("/folders/{parent}"), Some(&cookie), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT, "delete folder");
+    let (_st, b, _) = send(&router, "GET", &format!("/projects/{pid}/folders"), Some(&cookie), None).await;
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&b).unwrap().as_array().unwrap().len(), 0, "subtree gone");
+    let (_st, b, _) = send(&router, "GET", &format!("/assets/{aid}"), Some(&cookie), None).await;
+    let asset: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert!(asset["folder_id"].is_null(), "asset survived, unfiled");
+}

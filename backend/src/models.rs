@@ -191,6 +191,9 @@ pub struct Asset {
     pub canon_version_id: Option<Uuid>,
     /// Approved style anchor: future generation conditions on it (the moat loop).
     pub exemplar: bool,
+    /// Home folder in the project's tree; null = project root (unfiled).
+    #[sqlx(default)]
+    pub folder_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     /// Stable, browser-usable URL for the image. Not stored — filled in by the
     /// route after fetching (see `routes::assets`). For object-stored assets
@@ -227,6 +230,61 @@ pub struct UpdateAsset {
     pub name: Option<String>,
     #[serde(default)]
     pub exemplar: Option<bool>,
+    /// Move the asset to a folder. Outer None = field absent (unchanged); inner
+    /// None (explicit JSON null) = move to project root.
+    #[serde(default, deserialize_with = "crate::models::double_option")]
+    pub folder_id: Option<Option<Uuid>>,
+}
+
+/// Deserialize a field so an explicit JSON `null` becomes `Some(None)` while an
+/// absent field stays `None` — lets a PATCH distinguish "clear it" from "leave
+/// it". (serde's `default` alone collapses both to `None`.)
+pub fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Deserialize::deserialize(de).map(Some)
+}
+
+// ── Folders (asset tree — an asset's canonical home) ──────────────────────────
+
+#[derive(Debug, Serialize, FromRow)]
+pub struct Folder {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A folder plus the count of assets filed directly in it (not descendants) —
+/// the list row the board's tree renders.
+#[derive(Debug, Serialize, FromRow)]
+pub struct FolderNode {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub name: String,
+    pub asset_count: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateFolder {
+    pub name: String,
+    #[serde(default)]
+    pub parent_id: Option<Uuid>,
+}
+
+/// Rename and/or reparent a folder. Absent fields are left unchanged; an
+/// explicit null `parent_id` moves the folder to the root.
+#[derive(Debug, Deserialize)]
+pub struct UpdateFolder {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default, deserialize_with = "crate::models::double_option")]
+    pub parent_id: Option<Option<Uuid>>,
 }
 
 /// One keyset page of assets. `next_cursor` is an opaque token to pass back as

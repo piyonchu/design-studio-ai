@@ -8,6 +8,7 @@ mod collections;
 mod comments;
 mod context;
 mod export;
+mod folders;
 mod lineage;
 mod projects;
 mod recipes;
@@ -35,6 +36,7 @@ pub fn router() -> Router<AppState> {
         .merge(assets::router())
         .merge(audio::router())
         .merge(collections::router())
+        .merge(folders::router())
         .merge(comments::router())
         .merge(lineage::router())
         .merge(export::router())

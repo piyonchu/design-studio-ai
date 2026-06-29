@@ -31,6 +31,7 @@ export function AssetInspector({
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [collections, setCollections] = useState<api.CollectionSummary[]>([])
+  const [folders, setFolders] = useState<api.FolderNode[]>([])
   const [selectedCol, setSelectedCol] = useState('')
   const [added, setAdded] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +55,7 @@ export function AssetInspector({
         setRole(d.role ?? '')
         setTags(d.tags.join(', '))
         api.listCollections(d.project_id).then((cs) => alive && setCollections(cs)).catch(() => {})
+        api.listFolders(d.project_id).then((fs) => alive && setFolders(fs)).catch(() => {})
       })
       .catch((e) => alive && setError(e instanceof ApiError ? e.message : 'Failed to load.'))
     return () => {
@@ -96,6 +98,30 @@ export function AssetInspector({
       setError(e instanceof ApiError ? e.message : 'Update failed.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Full "Parent / Child" path for a folder, for unambiguous select labels.
+  function folderPath(id: string): string {
+    const by = new Map(folders.map((f) => [f.id, f]))
+    const parts: string[] = []
+    let cur: api.FolderNode | undefined = by.get(id)
+    let guard = 0
+    while (cur && guard++ < 64) {
+      parts.unshift(cur.name)
+      cur = cur.parent_id ? by.get(cur.parent_id) : undefined
+    }
+    return parts.join(' / ')
+  }
+
+  async function moveToFolder(folderId: string | null) {
+    if (!detail) return
+    try {
+      const updated = await api.moveAsset(detail.id, folderId)
+      setDetail((d) => (d ? { ...d, ...updated } : d))
+      onChanged(updated)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Move failed.')
     }
   }
 
@@ -233,6 +259,22 @@ export function AssetInspector({
               {saved && <span className="text-xs text-teal-bright">Saved</span>}
               {error && <span className="text-xs text-rose-300">{error}</span>}
             </div>
+
+            <label className="mb-5 grid gap-1.5">
+              <span className="text-xs font-medium text-text-dim">Folder</span>
+              <select
+                value={detail.folder_id ?? ''}
+                onChange={(e) => moveToFolder(e.target.value || null)}
+                className="rounded-[10px] bg-surface/60 px-2.5 py-2 text-sm text-text outline-none focus:ring-1 focus:ring-teal/40"
+              >
+                <option value="">Unfiled (root)</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {folderPath(f.id)}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             {collections.length > 0 ? (
               <div className="mb-5 flex flex-wrap items-center gap-2">
