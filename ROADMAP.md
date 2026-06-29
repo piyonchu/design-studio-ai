@@ -19,7 +19,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | 3 · PR4 | Collaboration: review queue + comment threads | ✅ |
 | 3 · PR5 | Lineage graph + canon-change propagation | ✅ |
 | 3.5 | Visual intelligence — embedding pipeline (search · dedup · find-similar) | ✅ (real text embedder `text-embedding-3-small`, cached, behind `EMBED_MOCK`; pixel-CLIP later) |
-| 4 | Audio modality — provider boundary + mock WAV + generate/play | ✅ (mock; no hosted provider yet) |
+| 4 | Audio modality — provider boundary + generate/play | ✅ (real: Google Lyria via OpenRouter, trimmed game loops; `AUDIO_MOCK` for free dev) |
 | 5 · PR1 | Export — generic zip + manifest + pre-export checks | ✅ |
 | 5 · PR2 | Export — role/tag-grouped pack (vertical-neutral) | ✅ |
 | 3.5 PR2 | Semantic context RAG — "Ask this project" over briefs/prompts/comments/canon | ✅ |
@@ -89,9 +89,11 @@ all decision/spend-gated — confirm before starting:
   index 0013); follow-ups: paginate the Activity feed too, and a "select all
   matching" for batch ops across pages (today batch select sees loaded pages).
 
-### Done — Phase 4 (audio modality, mock)
+### Done — Phase 4 (audio modality)
 - `ai/audio.rs` mirrors the image boundary: `AUDIO_MOCK=true` synthesizes a
-  deterministic WAV; real mode 503 until a hosted provider is wired.
+  deterministic WAV (free dev); `AUDIO_MOCK=false` + key generates real music
+  loops via OpenRouter **`google/lyria-3-clip-preview`** (`stream:true` → base64
+  MP3), trimmed to `AUDIO_CLIP_SECS` (~8s) on a frame boundary.
 - `POST /projects/:id/audio` stores `kind='audio'` assets; the board has an
   image/audio toggle and plays clips inline. Second modality from the brief now
   in the product. (Waveform/duration display + audio-specific checks: later.)
