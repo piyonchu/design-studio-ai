@@ -17,6 +17,13 @@ node_modules/
 *.log
 .idea/
 .vscode/
+
+# Agent / assistant tool config + installed skills (per-tool, local only)
+.agents/
+.claude/
+.codex/
+.cursor/
+.impeccable/
 /.ai-cache/
 backend/.ai-cache/
 /.asset-mirror/
