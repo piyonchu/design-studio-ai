@@ -15,6 +15,8 @@ import {
   WarningIcon,
   StarIcon,
   BookmarkSimpleIcon,
+  MinusIcon,
+  PlusIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
@@ -52,6 +54,8 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
   const [collections, setCollections] = useState<api.CollectionSummary[]>([])
   const [prompt, setPrompt] = useState('')
   const [genMode, setGenMode] = useState<'image' | 'audio'>('image')
+  // How many to generate per request (backend clamps 1–4).
+  const [count, setCount] = useState(1)
   const [baseId, setBaseId] = useState<string | null>(null)
   const [instruction, setInstruction] = useState('')
   const [busy, setBusy] = useState(false)
@@ -293,13 +297,13 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
     try {
       if (genMode === 'audio') {
         // Audio stays synchronous (no async job kind yet).
-        const created = await api.generateAudio(projectId, p, 1)
+        const created = await api.generateAudio(projectId, p, count)
         setAssets((a) => [...created, ...a])
         bumpFacets()
       } else {
         // Image generation runs as a background job: enqueue, then watch it
         // finish and refresh the board (the JobsBanner shows progress).
-        const job = await api.enqueueGenerate(projectId, p, 1)
+        const job = await api.enqueueGenerate(projectId, p, count)
         watchJob(job.id)
       }
       setPrompt('')
@@ -740,6 +744,30 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
                 }
                 className="flex-1 bg-transparent px-2 text-sm text-text outline-none placeholder:text-text-dim"
               />
+              <div
+                className="flex shrink-0 items-center gap-0.5 rounded-[8px] bg-surface/60 p-0.5"
+                title="How many to generate (max 4)"
+              >
+                <button
+                  type="button"
+                  onClick={() => setCount((c) => Math.max(1, c - 1))}
+                  disabled={count <= 1}
+                  aria-label="Fewer"
+                  className="grid size-7 place-items-center rounded-[6px] text-text-dim transition hover:text-text disabled:opacity-30"
+                >
+                  <MinusIcon size={13} weight="bold" />
+                </button>
+                <span className="w-5 text-center text-sm font-semibold tabular-nums text-text">{count}</span>
+                <button
+                  type="button"
+                  onClick={() => setCount((c) => Math.min(4, c + 1))}
+                  disabled={count >= 4}
+                  aria-label="More"
+                  className="grid size-7 place-items-center rounded-[6px] text-text-dim transition hover:text-text disabled:opacity-30"
+                >
+                  <PlusIcon size={13} weight="bold" />
+                </button>
+              </div>
               <button
                 type="submit"
                 disabled={busy || !prompt.trim()}
