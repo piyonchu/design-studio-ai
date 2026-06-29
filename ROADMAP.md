@@ -36,6 +36,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | Activity feed — merged asset/comment/canon timeline (Activity tab) | ✅ |
 | — | Engine adapters — **Godot 4 + Unity** import-ready packs (per-vertical `engines` hook, game_2d) | ✅ (Unity format-validated, not editor-tested) |
 | — | Nav shell — left rail replaces the tab bar | ✅ (slide-overs later) |
+| — | Board pagination — keyset paging + server-side filters + facet counts | ✅ |
 
 ### Done — Phase 3.5 (visual intelligence, mock embeddings)
 Mock-first feature-hashed embedder (`ai/embeddings.rs`, `EMBED_MOCK` default) —
@@ -81,7 +82,10 @@ all decision/spend-gated — confirm before starting:
 - **Animation** (frame sequences) — own spike, real-model spend.
 - **Pixel-CLIP visual embedder** — swaps behind `embed_text`; shared-key spend.
 - **Commercialization track** — async gen queue, billing/quotas, deploy,
-  CORS lockdown, content moderation, password-reset/email-verify, pagination.
+  CORS lockdown, content moderation, password-reset/email-verify. **Board
+  pagination ✅** (keyset `?cursor` + server filters + `/assets/facets` counts,
+  index 0013); follow-ups: paginate the Activity feed too, and a "select all
+  matching" for batch ops across pages (today batch select sees loaded pages).
 
 ### Done — Phase 4 (audio modality, mock)
 - `ai/audio.rs` mirrors the image boundary: `AUDIO_MOCK=true` synthesizes a
