@@ -94,6 +94,12 @@ all decision/spend-gated — confirm before starting:
   deterministic WAV (free dev); `AUDIO_MOCK=false` + key generates real music
   loops via OpenRouter **`google/lyria-3-clip-preview`** (`stream:true` → base64
   MP3), trimmed to `AUDIO_CLIP_SECS` (~8s) on a frame boundary.
+- **Follow-up — true SFX:** Lyria is a *music* model, so it's good for loops/
+  ambience but not realistic one-shot SFX (sword clang, explosion). OpenRouter
+  has no SFX model; a real SFX provider lives outside it — **ElevenLabs Sound
+  Effects** (`/v1/sound-generation`, `duration_seconds` 0.5–30, loopable) is the
+  best fit (needs its own key), with Stability Stable Audio / Meta AudioGen (via
+  Replicate) as alternatives. Add behind the same boundary as a music/sfx toggle.
 - `POST /projects/:id/audio` stores `kind='audio'` assets; the board has an
   image/audio toggle and plays clips inline. Second modality from the brief now
   in the product. (Waveform/duration display + audio-specific checks: later.)
