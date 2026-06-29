@@ -564,6 +564,18 @@ async fn update_asset(
     let project_id = project_id.ok_or(AppError::NotFound)?;
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
 
+    // Review gate (Phase C): only a reviewer+ may move an asset to `approved`
+    // (approval feeds the exemplar/canon moat). Editors can flag/reject/reset.
+    if matches!(body.status, Some(crate::models::AssetStatus::Approved)) {
+        auth::require_project_role(
+            &state.pool,
+            project_id,
+            user.id,
+            crate::models::ProjectRole::Reviewer,
+        )
+        .await?;
+    }
+
     let reindex = body.role.is_some() || body.tags.is_some();
 
     // Folder moves use a sentinel: $7 is the new id (may be null = root) and $8

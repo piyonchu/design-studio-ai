@@ -594,3 +594,134 @@ async fn deterministic_edit_appends_version() {
     .await;
     assert_eq!(st, StatusCode::BAD_REQUEST, "bad rotation rejected");
 }
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn reviewer_gate_blocks_editor_approval() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("AUDIO_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    // Owner A: workspace + project + a generated asset.
+    let a_email = format!("owner-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie_a) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{a_email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie_a = cookie_a.expect("A cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie_a), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie_a),
+        Some("{\"name\":\"Perms\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/assets"),
+        Some(&cookie_a),
+        Some("{\"prompt\":\"a knight\",\"count\":1}"),
+    )
+    .await;
+    let aid = all_ids(&b)[0].clone();
+
+    // Editor B: separate signup, then invited into A's workspace as editor.
+    let b_email = format!("editor-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, bbody, cookie_b) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{b_email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie_b = cookie_b.expect("B cookie");
+    let b_id = field(&bbody, "id").to_owned(); // first id = user.id
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/members"),
+        Some(&cookie_a),
+        Some(&format!("{{\"email\":\"{b_email}\",\"role\":\"editor\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "invite B as editor");
+
+    // B (editor) cannot approve, and /access says so.
+    let (_st, acc, _) = send(&router, "GET", &format!("/projects/{pid}/access"), Some(&cookie_b), None).await;
+    let acc: serde_json::Value = serde_json::from_slice(&acc).unwrap();
+    assert_eq!(acc["role"], "editor");
+    assert_eq!(acc["can_approve"], false, "editor cannot approve");
+    let (st, _b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/assets/{aid}"),
+        Some(&cookie_b),
+        Some("{\"status\":\"approved\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "editor approval blocked by review gate");
+
+    // B can still flag for review (editor-level write is allowed).
+    let (st, _b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/assets/{aid}"),
+        Some(&cookie_b),
+        Some("{\"status\":\"needs_review\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "editor may flag needs_review");
+
+    // Owner A promotes B to reviewer on this project.
+    let (st, _b, _) = send(
+        &router,
+        "PUT",
+        &format!("/projects/{pid}/members/{b_id}"),
+        Some(&cookie_a),
+        Some("{\"role\":\"reviewer\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::NO_CONTENT, "owner sets reviewer override");
+
+    // Now B can approve.
+    let (_st, acc, _) = send(&router, "GET", &format!("/projects/{pid}/access"), Some(&cookie_b), None).await;
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&acc).unwrap()["can_approve"], true);
+    let (st, _b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/assets/{aid}"),
+        Some(&cookie_b),
+        Some("{\"status\":\"approved\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "reviewer approval allowed");
+
+    // An editor cannot hand out roles (owner-only).
+    let (st, _b, _) = send(
+        &router,
+        "PUT",
+        &format!("/projects/{pid}/members/{b_id}"),
+        Some(&cookie_b),
+        Some("{\"role\":\"owner\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "non-owner cannot assign roles");
+}

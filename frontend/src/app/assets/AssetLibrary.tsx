@@ -49,7 +49,15 @@ const STATUS_DOT: Record<api.AssetStatus, string> = {
  * language, and multi-select batch actions (approve / add-to-collection).
  * Click a tile to pick a derivation base; toggle Select for batch mode.
  */
-export function AssetLibrary({ projectId, vertical }: { projectId: string; vertical?: string }) {
+export function AssetLibrary({
+  projectId,
+  vertical,
+  canApprove = true,
+}: {
+  projectId: string
+  vertical?: string
+  canApprove?: boolean
+}) {
   const PRESETS = verticalConfig(vertical).derivePresets
   const [assets, setAssets] = useState<api.Asset[]>([])
   const [collections, setCollections] = useState<api.CollectionSummary[]>([])
@@ -629,7 +637,8 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
             <span className="text-sm text-text">{selected.size} selected</span>
             <button
               onClick={() => batchStatus('approved')}
-              disabled={!selected.size || busy}
+              disabled={!selected.size || busy || !canApprove}
+              title={canApprove ? undefined : 'Only a reviewer or owner can approve'}
               className="inline-flex items-center gap-1.5 rounded-[8px] bg-teal px-3 py-1.5 text-sm font-semibold text-bg transition active:translate-y-px disabled:opacity-40"
             >
               <CheckIcon size={14} weight="bold" />
@@ -951,16 +960,18 @@ export function AssetLibrary({ projectId, vertical }: { projectId: string; verti
 
                     {!selecting && a.status === 'candidate' && (
                       <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-black/45 p-1.5 opacity-0 backdrop-blur transition group-hover:opacity-100">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            review(a.id, 'approved')
-                          }}
-                          aria-label="Approve"
-                          className="flex flex-1 items-center justify-center rounded-[6px] bg-teal/85 py-1 text-bg transition hover:bg-teal"
-                        >
-                          <CheckIcon size={13} weight="bold" />
-                        </button>
+                        {canApprove && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              review(a.id, 'approved')
+                            }}
+                            aria-label="Approve"
+                            className="flex flex-1 items-center justify-center rounded-[6px] bg-teal/85 py-1 text-bg transition hover:bg-teal"
+                          >
+                            <CheckIcon size={13} weight="bold" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()

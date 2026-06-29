@@ -16,6 +16,34 @@ pub enum WorkspaceRole {
     Owner,
 }
 
+/// Per-project role override (Phase C), layered on the workspace role. Ordered
+/// viewer < editor < reviewer < owner so `>=` gates capability; `reviewer`+ may
+/// approve assets (the review gate).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "project_role", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectRole {
+    Viewer,
+    Editor,
+    Reviewer,
+    Owner,
+}
+
+impl ProjectRole {
+    /// The project role a workspace member has by default (no override).
+    pub fn from_workspace(r: WorkspaceRole) -> Self {
+        match r {
+            WorkspaceRole::Viewer => ProjectRole::Viewer,
+            WorkspaceRole::Editor => ProjectRole::Editor,
+            WorkspaceRole::Owner => ProjectRole::Owner,
+        }
+    }
+    /// Reviewer+ may approve assets (the review gate).
+    pub fn can_approve(self) -> bool {
+        self >= ProjectRole::Reviewer
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "asset_kind", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
@@ -134,6 +162,34 @@ pub struct InviteMember {
     pub email: String,
     #[serde(default)]
     pub role: Option<WorkspaceRole>,
+}
+
+// ── Project access (Phase C) ──────────────────────────────────────────────────
+
+/// A row in the per-project access table: a workspace member, the role they
+/// effectively have on this project, and whether that's an explicit override.
+#[derive(Debug, Serialize)]
+pub struct ProjectMemberRow {
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: Option<String>,
+    pub workspace_role: WorkspaceRole,
+    /// Effective project role (override if present, else derived from workspace).
+    pub project_role: ProjectRole,
+    pub overridden: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetProjectRole {
+    pub role: ProjectRole,
+}
+
+/// The caller's effective access on a project — drives UI gating (e.g. whether
+/// the approve buttons are enabled).
+#[derive(Debug, Serialize)]
+pub struct ProjectAccess {
+    pub role: ProjectRole,
+    pub can_approve: bool,
 }
 
 /// Internal row for credential verification (carries the hash).

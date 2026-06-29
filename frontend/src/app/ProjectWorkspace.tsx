@@ -8,6 +8,7 @@ import {
   TreeStructureIcon,
   StackIcon,
   ClockCounterClockwiseIcon,
+  ShieldCheckIcon,
 } from '@phosphor-icons/react'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
@@ -18,8 +19,9 @@ import { CanonView } from './canon/CanonView'
 import { ContextAsk } from './canon/ContextAsk'
 import { CollectionsView } from './collections/CollectionsView'
 import { ActivityView } from './activity/ActivityView'
+import { AccessView } from './AccessView'
 
-type Tab = 'canon' | 'assets' | 'review' | 'lineage' | 'collections' | 'activity'
+type Tab = 'canon' | 'assets' | 'review' | 'lineage' | 'collections' | 'activity' | 'access'
 
 const NAV: { id: Tab; label: string; icon: ComponentType<{ size?: number; weight?: 'fill' | 'regular' }> }[] = [
   { id: 'assets', label: 'Board', icon: SquaresFourIcon },
@@ -28,6 +30,7 @@ const NAV: { id: Tab; label: string; icon: ComponentType<{ size?: number; weight
   { id: 'lineage', label: 'Lineage', icon: TreeStructureIcon },
   { id: 'collections', label: 'Collections', icon: StackIcon },
   { id: 'activity', label: 'Activity', icon: ClockCounterClockwiseIcon },
+  { id: 'access', label: 'Access', icon: ShieldCheckIcon },
 ]
 
 /**
@@ -40,6 +43,7 @@ export function ProjectWorkspace() {
 
   const [project, setProject] = useState<api.Project | null>(null)
   const [tab, setTab] = useState<Tab>('assets')
+  const [access, setAccess] = useState<api.ProjectAccess | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -53,10 +57,17 @@ export function ProjectWorkspace() {
       .catch((err) => {
         if (alive) setError(err instanceof ApiError ? err.message : 'Failed to load project.')
       })
+    api
+      .getProjectAccess(projectId)
+      .then((a) => alive && setAccess(a))
+      .catch(() => {})
     return () => {
       alive = false
     }
   }, [projectId])
+
+  // Until access resolves, don't disable approval (the backend still enforces).
+  const canApprove = access ? access.can_approve : true
 
   return (
     <div className="relative flex h-[100dvh]">
@@ -108,15 +119,17 @@ export function ProjectWorkspace() {
                 <CanonView projectId={projectId} vertical={project?.vertical} />
               </div>
             ) : tab === 'review' ? (
-              <ReviewQueue projectId={projectId} />
+              <ReviewQueue projectId={projectId} canApprove={canApprove} />
             ) : tab === 'lineage' ? (
               <LineageView projectId={projectId} />
             ) : tab === 'collections' ? (
               <CollectionsView projectId={projectId} vertical={project?.vertical} />
             ) : tab === 'activity' ? (
               <ActivityView projectId={projectId} />
+            ) : tab === 'access' ? (
+              <AccessView projectId={projectId} />
             ) : (
-              <AssetLibrary projectId={projectId} vertical={project?.vertical} />
+              <AssetLibrary projectId={projectId} vertical={project?.vertical} canApprove={canApprove} />
             ))}
         </div>
       </div>

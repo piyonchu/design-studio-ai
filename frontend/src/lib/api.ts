@@ -93,6 +93,36 @@ export const inviteMember = (workspaceId: string, email: string, role: Role = 'e
 export const removeMember = (workspaceId: string, userId: string) =>
   request<void>(`/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' })
 
+// ── Project access (per-project roles + reviewer gate, Phase C) ───────────────
+export type ProjectRole = 'viewer' | 'editor' | 'reviewer' | 'owner'
+/** The caller's effective access on a project (drives UI gating). */
+export interface ProjectAccess {
+  role: ProjectRole
+  can_approve: boolean
+}
+/** A workspace member with the role they effectively have on a project. */
+export interface ProjectMemberRow {
+  user_id: string
+  email: string
+  display_name: string | null
+  workspace_role: Role
+  project_role: ProjectRole
+  overridden: boolean
+}
+export const getProjectAccess = (projectId: string) =>
+  request<ProjectAccess>(`/projects/${projectId}/access`)
+export const listProjectMembers = (projectId: string) =>
+  request<ProjectMemberRow[]>(`/projects/${projectId}/members`)
+/** Set a per-project role override (project owner only). */
+export const setProjectRole = (projectId: string, userId: string, role: ProjectRole) =>
+  request<void>(`/projects/${projectId}/members/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  })
+/** Clear a per-project override → falls back to the member's workspace role. */
+export const clearProjectRole = (projectId: string, userId: string) =>
+  request<void>(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' })
+
 // ── Workspaces & projects ─────────────────────────────────────────────────────
 export const listWorkspaces = () => request<Workspace[]>('/workspaces')
 
