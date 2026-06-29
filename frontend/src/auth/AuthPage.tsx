@@ -1,19 +1,34 @@
-import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { SparkleIcon, SpinnerGapIcon } from '@phosphor-icons/react'
 import { useAuth } from './AuthContext'
 import { ApiError } from '../lib/api'
 
 type Mode = 'login' | 'signup'
 
+function modeFromParams(params: URLSearchParams): Mode {
+  return params.get('mode') === 'login' ? 'login' : 'signup'
+}
+
 export function AuthPage() {
   const { login, signup } = useAuth()
   const navigate = useNavigate()
-  const [mode, setMode] = useState<Mode>('signup')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [mode, setMode] = useState<Mode>(() => modeFromParams(searchParams))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setMode(modeFromParams(searchParams))
+  }, [searchParams])
+
+  function switchMode(next: Mode) {
+    setMode(next)
+    setSearchParams({ mode: next })
+    setError(null)
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -43,7 +58,7 @@ export function AuthPage() {
             <SparkleIcon size={20} weight="fill" />
           </span>
           <div className="leading-tight">
-            <p className="text-sm font-medium text-text">Design Studio AI</p>
+            <p className="text-sm font-medium text-text">CanonForge</p>
             <p className="text-xs text-text-dim">
               {mode === 'login' ? 'Welcome back' : 'Create your workspace'}
             </p>
@@ -97,10 +112,7 @@ export function AuthPage() {
           {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
           <button
             type="button"
-            onClick={() => {
-              setMode(mode === 'login' ? 'signup' : 'login')
-              setError(null)
-            }}
+            onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}
             className="font-medium text-teal-bright hover:underline"
           >
             {mode === 'login' ? 'Sign up' : 'Sign in'}
