@@ -33,7 +33,9 @@ async fn style_fit(
     let project_id = project_id.ok_or(AppError::NotFound)?;
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
 
-    let row: Option<(f64, i64)> = sqlx::query_as(
+    // MAX(...) is NULL when there's no other approved asset with a visual
+    // embedding to compare against, so column 0 must decode as Option.
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
         "WITH q AS (SELECT embedding_visual FROM visual_embeddings WHERE asset_id = $1)
          SELECT MAX(1 - (e.embedding_visual <=> q.embedding_visual))::float8,
                 COUNT(*)::int8
@@ -48,7 +50,7 @@ async fn style_fit(
     .await?;
 
     let (score, basis) = match row {
-        Some((s, n)) if n > 0 => (Some(s), n),
+        Some((Some(s), n)) if n > 0 => (Some(s), n),
         _ => (None, 0),
     };
     Ok(Json(serde_json::json!({ "score": score, "basis": basis })))
