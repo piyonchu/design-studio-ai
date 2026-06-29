@@ -79,6 +79,14 @@ Open http://localhost:5173 → sign up → open a project.
 `ATLAS_PLAN.md`, `PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md` are intentionally untracked scratch/plan notes — ignore for handoff; the source of truth is `PLAN.md` + `ROADMAP.md`.
 
 ## Next up
-Open candidates (see [ROADMAP.md](ROADMAP.md)): **engine export adapters** (Godot/Unity, consume the export `groups[]` — the registry can grow a per-vertical export hook); a **4th vertical** (marketing imagery — pure config); **animation** (frame sequences — own spike, real-model spend); swapping the mock embedder for a **real text/CLIP model** (shared-key spend); and the **commercialization track** (async gen queue, billing/quotas, deploy, tests, CORS lockdown, content moderation, password-reset/email-verify, pagination).
+Open candidates (see [ROADMAP.md](ROADMAP.md)): **engine export adapters** (Godot/Unity, consume the export `groups[]` — the registry can grow a per-vertical export hook); a **4th vertical** (marketing imagery — pure config); **animation** (frame sequences — own spike, real-model spend); swapping the mock embedder for a **real text/CLIP model** (shared-key spend); and the **commercialization track** (async gen queue, billing/quotas, deploy, tests, CORS lockdown, content moderation, password-reset/email-verify).
+
+**Board pagination is done** — `GET /projects/:id/assets` is keyset-paginated
+(`?limit&cursor&status&role&source&collection` → `{items, next_cursor}`, cursor =
+`created_at_micros_id`) with `GET /projects/:id/assets/facets` feeding the
+filter-rail counts and migration 0013's `(project_id, created_at DESC, id DESC)`
+index; the board pages via a "Load more" button (search stays a bounded ranked
+set). Follow-ups: paginate the Activity feed, and "select all matching" for
+batch ops across pages (today batch select only sees loaded pages).
 
 > Migrations note: the embedding stores (`semantic_embeddings` 1024-d, `visual_embeddings` 768-d) ship from `0001` with placeholder dims; the mock embedder matches them. Reconcile dims when a real model is chosen.

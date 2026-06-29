@@ -18,6 +18,7 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/projects/:project_id/assets", get(list).post(generate))
+        .route("/projects/:project_id/assets/facets", get(facets))
         .route("/projects/:project_id/assets/upload", post(upload))
         .route("/projects/:project_id/assets/:base_id/derive", post(derive))
         .route("/assets/:id", get(get_one).patch(update_asset).delete(delete_one))
@@ -216,19 +217,131 @@ async fn upload(
     Ok((StatusCode::CREATED, Json(with_url(asset))))
 }
 
+/// Default / max page size for the board list.
+const PAGE_DEFAULT: i64 = 50;
+const PAGE_MAX: i64 = 100;
+
+/// Query for the keyset-paginated, server-filtered board list.
+#[derive(Debug, Deserialize)]
+struct ListQuery {
+    #[serde(default)]
+    limit: Option<i64>,
+    /// Opaque cursor from a prior page's `next_cursor`.
+    #[serde(default)]
+    cursor: Option<String>,
+    /// Comma-separated filter values (multi-select rail). Empty → no filter.
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
+    /// Restrict to members of this collection.
+    #[serde(default)]
+    collection: Option<Uuid>,
+}
+
+fn csv(s: &Option<String>) -> Vec<String> {
+    s.as_deref()
+        .map(|v| v.split(',').map(str::trim).filter(|p| !p.is_empty()).map(String::from).collect())
+        .unwrap_or_default()
+}
+
+/// Cursor = `<created_at_micros>_<uuid>` — opaque to clients, cheap to parse.
+fn encode_cursor(a: &Asset) -> String {
+    format!("{}_{}", a.created_at.timestamp_micros(), a.id)
+}
+
+fn decode_cursor(c: &str) -> Option<(chrono::DateTime<chrono::Utc>, Uuid)> {
+    let (micros, id) = c.split_once('_')?;
+    let ts = chrono::DateTime::from_timestamp_micros(micros.parse().ok()?)?;
+    Some((ts, id.parse().ok()?))
+}
+
+/// Board list — keyset pagination ordered by `(created_at DESC, id DESC)` with
+/// optional server-side filters (status / role / source / collection). Returns
+/// one page plus a `next_cursor` for the following page.
 async fn list(
     State(state): State<AppState>,
     user: AuthUser,
     Path(project_id): Path<Uuid>,
-) -> Result<Json<Vec<Asset>>, AppError> {
+    Query(q): Query<ListQuery>,
+) -> Result<Json<crate::models::AssetPage>, AppError> {
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
-    let rows = sqlx::query_as::<_, Asset>(&format!(
-        "SELECT {ASSET_COLS} FROM assets WHERE project_id = $1 ORDER BY created_at DESC"
-    ))
+    let limit = q.limit.unwrap_or(PAGE_DEFAULT).clamp(1, PAGE_MAX);
+
+    let mut qb = sqlx::QueryBuilder::new(format!(
+        "SELECT {ASSET_COLS} FROM assets WHERE project_id = "
+    ));
+    qb.push_bind(project_id);
+
+    let statuses = csv(&q.status);
+    if !statuses.is_empty() {
+        qb.push(" AND status::text = ANY(").push_bind(statuses).push(")");
+    }
+    let roles = csv(&q.role);
+    if !roles.is_empty() {
+        qb.push(" AND role = ANY(").push_bind(roles).push(")");
+    }
+    let sources = csv(&q.source);
+    if !sources.is_empty() {
+        qb.push(" AND source_kind = ANY(").push_bind(sources).push(")");
+    }
+    if let Some(cid) = q.collection {
+        qb.push(" AND id IN (SELECT asset_id FROM collection_items WHERE collection_id = ")
+            .push_bind(cid)
+            .push(")");
+    }
+    if let Some((ts, id)) = q.cursor.as_deref().and_then(decode_cursor) {
+        qb.push(" AND (created_at, id) < (").push_bind(ts).push(", ").push_bind(id).push(")");
+    }
+    // Fetch one extra row to detect whether a further page exists.
+    qb.push(" ORDER BY created_at DESC, id DESC LIMIT ").push_bind(limit + 1);
+
+    let mut rows = qb.build_query_as::<Asset>().fetch_all(&state.pool).await?;
+    let next_cursor = (rows.len() as i64 > limit).then(|| {
+        rows.truncate(limit as usize);
+        encode_cursor(rows.last().expect("non-empty page"))
+    });
+
+    Ok(Json(crate::models::AssetPage {
+        items: rows.into_iter().map(with_url).collect(),
+        next_cursor,
+    }))
+}
+
+/// Filter-rail counts over the whole project (so they don't drift with paging).
+async fn facets(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(project_id): Path<Uuid>,
+) -> Result<Json<crate::models::AssetFacets>, AppError> {
+    use crate::models::FacetCount;
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
+
+    let status = sqlx::query_as::<_, FacetCount>(
+        "SELECT status::text AS value, COUNT(*) AS count FROM assets
+         WHERE project_id = $1 GROUP BY status ORDER BY value",
+    )
     .bind(project_id)
     .fetch_all(&state.pool)
     .await?;
-    Ok(Json(rows.into_iter().map(with_url).collect()))
+    let role = sqlx::query_as::<_, FacetCount>(
+        "SELECT role AS value, COUNT(*) AS count FROM assets
+         WHERE project_id = $1 AND role IS NOT NULL GROUP BY role ORDER BY value",
+    )
+    .bind(project_id)
+    .fetch_all(&state.pool)
+    .await?;
+    let source = sqlx::query_as::<_, FacetCount>(
+        "SELECT source_kind AS value, COUNT(*) AS count FROM assets
+         WHERE project_id = $1 GROUP BY source_kind ORDER BY value",
+    )
+    .bind(project_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(Json(crate::models::AssetFacets { status, role, source }))
 }
 
 /// Derive N images from a base asset, conditioned on the base + current canon.
@@ -485,7 +598,29 @@ fn compile_prompt(instruction: &str, canon: Option<&Value>, vertical: &str) -> S
 
 #[cfg(test)]
 mod tests {
-    use super::compile_prompt;
+    use super::{compile_prompt, csv, decode_cursor};
+
+    #[test]
+    fn csv_splits_and_trims() {
+        assert_eq!(csv(&Some(" a , b ,, c ".into())), vec!["a", "b", "c"]);
+        assert!(csv(&Some("".into())).is_empty());
+        assert!(csv(&None).is_empty());
+    }
+
+    #[test]
+    fn cursor_roundtrips_and_rejects_junk() {
+        let id = uuid::Uuid::new_v4();
+        let ts = chrono::DateTime::from_timestamp_micros(1_700_000_123_456).unwrap();
+        // Mirror encode_cursor without constructing a full Asset.
+        let c = format!("{}_{}", ts.timestamp_micros(), id);
+        let (got_ts, got_id) = decode_cursor(&c).expect("roundtrip");
+        assert_eq!(got_ts, ts);
+        assert_eq!(got_id, id);
+
+        assert!(decode_cursor("garbage").is_none());
+        assert!(decode_cursor("123_not-a-uuid").is_none());
+        assert!(decode_cursor("notanumber_00000000-0000-0000-0000-000000000000").is_none());
+    }
 
     #[test]
     fn vertical_render_hint_is_applied() {

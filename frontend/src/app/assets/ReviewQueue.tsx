@@ -36,10 +36,11 @@ export function ReviewQueue({ projectId }: { projectId: string }) {
   useEffect(() => {
     let alive = true
     api
-      .listAssets(projectId)
-      .then((all) => {
+      // Server-filtered to the pending statuses; a worklist rarely exceeds 100.
+      .listAssets(projectId, { status: ['candidate', 'needs_review'], limit: 100 })
+      .then((page) => {
         if (!alive) return
-        const pending = all.filter((a) => a.status === 'candidate' || a.status === 'needs_review')
+        const pending = page.items
         setQueue(pending)
         setFocusId((id) => id ?? pending[0]?.id ?? null)
       })
