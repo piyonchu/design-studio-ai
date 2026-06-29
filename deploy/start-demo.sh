@@ -10,5 +10,7 @@ if ! svc_url >/dev/null; then
   echo "✖ service '$SERVICE' not found — run ./deploy/deploy.sh first."
   exit 1
 fi
-gcloud run services update "$SERVICE" --region "$REGION" --allow-unauthenticated >/dev/null
+# Re-open public access via IAM.
+gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" \
+  --member=allUsers --role=roles/run.invoker >/dev/null
 echo "▶  demo live: $(svc_url)"
