@@ -44,7 +44,8 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | Pro · B1 | **Deterministic edits** — free, instant, model-free (crop/resize/flip/rotate/recolor/bg-remove/convert); each edit = a new version | ✅ |
 | Pro · B2 | **Masked/inpaint edit** — brush-a-region UX + `ai::edit` provider seam (mock alters only the masked region → new version); real provider (fal.ai/Replicate) deferred behind `EDIT_MOCK` | ✅ (seam + mock) |
 | Pro · C | **Permissions** — per-project role overrides + reviewer gate (editors submit, reviewers approve); layered on workspace roles | ✅ |
-| Pro · D | Consistency depth — smart-exemplar → ControlNet → per-project LoRA | 💡 |
+| Pro · D1 | **Smartest-exemplar pick** — condition generation on the approved exemplar whose embedding best matches the prompt (was newest-wins); no spend | ✅ |
+| Pro · D2/D3 | ControlNet / per-project LoRA — deepest moat | 💡 (spend-gated; needs go-ahead) |
 
 > **Pro-pipeline direction** (2026-06-30): reframe to a versioned, reviewed
 > production pipeline for pro/small studios. Full plan: [PRO_PIPELINE_PLAN.md](PRO_PIPELINE_PLAN.md).

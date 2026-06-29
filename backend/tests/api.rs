@@ -817,3 +817,97 @@ async fn inpaint_mock_changes_masked_region_and_versions() {
     assert_ne!(img.get_pixel(0, 0).0, [150, 150, 150, 255], "masked pixel changed");
     assert_eq!(img.get_pixel(7, 0).0, [150, 150, 150, 255], "unmasked pixel unchanged");
 }
+
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn generation_conditions_on_an_approved_exemplar() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool: pool.clone(), storage });
+
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"Exemplar\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    // Two raster PNG exemplars, each approved + marked exemplar.
+    let mut exemplar_ids = Vec::new();
+    for color in [[200u8, 40, 40, 255], [40, 40, 200, 255]] {
+        let png = {
+            let img = image::RgbaImage::from_pixel(8, 8, image::Rgba(color));
+            let mut buf = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(img).write_to(&mut buf, image::ImageFormat::Png).unwrap();
+            buf.into_inner()
+        };
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/projects/{pid}/assets/upload"))
+            .header("content-type", "image/png")
+            .header("cookie", &cookie)
+            .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 50000))))
+            .body(Body::from(png))
+            .unwrap();
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let b = to_bytes(resp.into_body(), usize::MAX).await.unwrap().to_vec();
+        let id = field(&b, "id").to_owned();
+        let (st, _b, _) = send(
+            &router,
+            "PATCH",
+            &format!("/assets/{id}"),
+            Some(&cookie),
+            Some("{\"status\":\"approved\",\"exemplar\":true}"),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "approve + mark exemplar");
+        exemplar_ids.push(id);
+    }
+
+    // Generate → run_generate selects an exemplar and conditions on it,
+    // recording metadata.exemplar_id.
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/assets"),
+        Some(&cookie),
+        Some("{\"prompt\":\"a blue knight\",\"count\":1}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "generate");
+    let new_id = all_ids(&b)[0].clone();
+
+    // The new asset must be conditioned on one of the two approved exemplars
+    // (the smartest-exemplar query ran and returned a valid candidate).
+    let chosen: Option<String> =
+        sqlx::query_scalar("SELECT metadata->>'exemplar_id' FROM assets WHERE id = $1::uuid")
+            .bind(&new_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let chosen = chosen.expect("generation recorded an exemplar_id");
+    assert!(exemplar_ids.contains(&chosen), "conditioned on an approved exemplar");
+}

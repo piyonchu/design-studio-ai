@@ -95,6 +95,45 @@ pub(crate) async fn record_version(
     Ok(vid)
 }
 
+/// Pick the approved style exemplar to condition generation on (D1 — smartest
+/// exemplar). Among a project's approved exemplars, choose the one whose
+/// embedding best matches the prompt (text + visual cosine blend), so the
+/// reference is the *most relevant* approved asset rather than just the newest.
+/// Falls back to newest-approved when there are no embeddings or no query vector
+/// (e.g. embeddings disabled) — preserving the prior behaviour. Returns
+/// `(id, s3_key, mime_type)` like the old inline query.
+async fn select_exemplar(
+    state: &AppState,
+    project_id: Uuid,
+    raw_prompt: &str,
+) -> Result<Option<(Uuid, String, Option<String>)>, AppError> {
+    let text_q = ai::embeddings::embed_text(raw_prompt, ai::embeddings::VISUAL_DIM).await;
+    let visual_q = ai::embeddings::embed_query_visual_space(raw_prompt, ai::embeddings::VISUAL_DIM).await;
+    let text_pg = text_q.as_ref().map(|v| ai::embeddings::to_pgvector(v));
+    let visual_pg = visual_q.as_ref().map(|v| ai::embeddings::to_pgvector(v));
+
+    // When both query vectors are NULL or an exemplar lacks embeddings, every
+    // score collapses to 0 and the `created_at DESC` tiebreak yields newest —
+    // i.e. exactly the legacy selection.
+    let row: Option<(Uuid, String, Option<String>)> = sqlx::query_as(
+        "SELECT a.id, a.s3_key, a.mime_type
+         FROM assets a
+         LEFT JOIN visual_embeddings e ON e.asset_id = a.id
+         WHERE a.project_id = $1 AND a.exemplar AND a.status = 'approved'
+         ORDER BY (
+             COALESCE(1 - (e.embedding_text   <=> $2::vector), 0)
+           + COALESCE(1 - (e.embedding_visual <=> $3::vector), 0)
+         ) DESC, a.created_at DESC
+         LIMIT 1",
+    )
+    .bind(project_id)
+    .bind(text_pg)
+    .bind(visual_pg)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(row)
+}
+
 /// An inline reference is something the browser can load directly (a data URL
 /// or an absolute http(s) URL) rather than an object-storage key.
 fn is_inline(s3_key: &str) -> bool {
@@ -154,14 +193,7 @@ pub(crate) async fn run_generate(
     // generation on it (reference img2img) so new assets inherit the approved
     // art direction. Falls back to text-only when there's none (or it can't be
     // referenced, e.g. an inline/remote-URL asset).
-    let exemplar: Option<(Uuid, String, Option<String>)> = sqlx::query_as(
-        "SELECT id, s3_key, mime_type FROM assets
-         WHERE project_id = $1 AND exemplar AND status = 'approved'
-         ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(project_id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let exemplar = select_exemplar(state, project_id, raw_prompt).await?;
     let exemplar_ref = match &exemplar {
         Some((eid, key, mime)) => match asset_bytes(state, key, mime.as_deref()).await {
             // Only raster references are usable as img2img input; skip vector/
@@ -783,17 +815,10 @@ async fn regenerate(
     let canon_id = canon.as_ref().map(|(id, _)| *id);
     let prompt = compile_prompt(&raw_prompt, canon.as_ref().map(|(_, d)| d), &vertical);
 
-    // …and on the approved style exemplar if there is one.
-    let exemplar: Option<(String, Option<String>)> = sqlx::query_as(
-        "SELECT s3_key, mime_type FROM assets
-         WHERE project_id = $1 AND exemplar AND status = 'approved'
-         ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(project_id)
-    .fetch_optional(&state.pool)
-    .await?;
+    // …and on the smartest approved exemplar for this prompt (D1) if any.
+    let exemplar = select_exemplar(&state, project_id, &raw_prompt).await?;
     let exemplar_ref = match &exemplar {
-        Some((key, mime)) => match asset_bytes(&state, key, mime.as_deref()).await {
+        Some((_, key, mime)) => match asset_bytes(&state, key, mime.as_deref()).await {
             Ok((bytes, m)) if is_raster(&m) => Some((bytes, m)),
             _ => None,
         },
