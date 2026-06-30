@@ -86,6 +86,10 @@ export function AssetLibrary({
   // Folder tree + the active folder scope (null = all assets, 'root' = unfiled).
   const [folders, setFolders] = useState<api.FolderNode[]>([])
   const [folderSel, setFolderSel] = useState<string | null>(null)
+  // QA gate: show only off-style candidates (style_fit below the threshold).
+  const [offStyle, setOffStyle] = useState(false)
+  // A3: the library is the hero; the generate bar is collapsed behind "+ New".
+  const [showGen, setShowGen] = useState(false)
 
   // Multi-select
   const [selecting, setSelecting] = useState(false)
@@ -128,6 +132,7 @@ export function AssetLibrary({
         source: [...sources],
         collection: collectionId,
         folder: folderSel,
+        offStyle,
       })
       .then((page) => {
         if (!alive) return
@@ -138,7 +143,7 @@ export function AssetLibrary({
     return () => {
       alive = false
     }
-  }, [projectId, statuses, roles, sources, collectionId, folderSel])
+  }, [projectId, statuses, roles, sources, collectionId, folderSel, offStyle])
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return
@@ -152,6 +157,7 @@ export function AssetLibrary({
         source: [...sources],
         collection: collectionId,
         folder: folderSel,
+        offStyle,
       })
       setAssets((a) => [...a, ...page.items])
       setNextCursor(page.next_cursor)
@@ -246,12 +252,13 @@ export function AssetLibrary({
       if (collectionId && !(members?.has(a.id) ?? false)) return false
       if (folderSel === 'root' && a.folder_id !== null) return false
       if (folderSel && folderSel !== 'root' && a.folder_id !== folderSel) return false
+      if (offStyle && !(a.style_fit != null && a.style_fit < api.STYLE_FIT_THRESHOLD)) return false
       return true
     })
-  }, [assets, searchHits, roles, statuses, sources, collectionId, collMembers, folderSel])
+  }, [assets, searchHits, roles, statuses, sources, collectionId, collMembers, folderSel, offStyle])
 
   const activeFilters =
-    roles.size + statuses.size + sources.size + (collectionId ? 1 : 0) + (query.trim() ? 1 : 0) + (folderSel ? 1 : 0)
+    roles.size + statuses.size + sources.size + (collectionId ? 1 : 0) + (query.trim() ? 1 : 0) + (folderSel ? 1 : 0) + (offStyle ? 1 : 0)
 
   function toggle<T>(set: Set<T>, value: T): Set<T> {
     const next = new Set(set)
@@ -266,6 +273,7 @@ export function AssetLibrary({
     setSources(new Set())
     setCollectionId(null)
     setFolderSel(null)
+    setOffStyle(false)
   }
 
   function genError(err: unknown) {
@@ -541,6 +549,19 @@ export function AssetLibrary({
             onMoveAsset={moveAssetToFolder}
           />
 
+          <button
+            onClick={() => setOffStyle((v) => !v)}
+            title="Show only candidates that don't match your approved style"
+            className={`mb-3 flex w-full items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
+              offStyle
+                ? 'border-amber-400/40 bg-amber-400/10 text-amber-200'
+                : 'border-white/10 text-text-dim hover:text-text'
+            }`}
+          >
+            <WarningIcon size={14} weight="fill" className={offStyle ? 'text-amber-300' : ''} />
+            Needs attention
+          </button>
+
           <Section title="Status">
             {STATUSES.map((s) => (
               <FilterChip
@@ -613,8 +634,20 @@ export function AssetLibrary({
             {searchHits == null && nextCursor && '+'}
           </span>
           <button
+            onClick={() => {
+              setShowGen((v) => !v)
+              setBaseId(null)
+            }}
+            className={`ml-auto inline-flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-sm font-semibold transition ${
+              showGen ? 'bg-teal/15 text-teal-bright' : 'bg-teal text-bg active:translate-y-px'
+            }`}
+          >
+            <SparkleIcon size={14} weight="fill" />
+            New asset
+          </button>
+          <button
             onClick={toggleSelectMode}
-            className={`ml-auto inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm transition ${
+            className={`inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm transition ${
               selecting ? 'border-teal/40 bg-teal/10 text-teal-bright' : 'border-white/10 text-text-dim hover:text-text'
             }`}
           >
@@ -768,7 +801,7 @@ export function AssetLibrary({
               </div>
             </div>
           </div>
-        ) : (
+        ) : showGen ? (
           <form onSubmit={generate} className="border-b border-white/8 p-4">
             <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-[12px] bg-surface-2/60 p-2">
               <div className="flex shrink-0 items-center rounded-[8px] bg-surface/60 p-0.5">
@@ -830,7 +863,7 @@ export function AssetLibrary({
               </button>
             </div>
           </form>
-        )}
+        ) : null}
 
         {error && <p className="px-5 pt-3 text-xs text-rose-300">{error}</p>}
 
@@ -868,7 +901,7 @@ export function AssetLibrary({
             <p className="px-1 py-16 text-center text-sm text-text-dim">
               {activeFilters > 0
                 ? 'No assets match these filters.'
-                : 'No assets yet. Generate one above, or upload a base.'}
+                : 'This library is empty. Click “New asset” to generate or upload your first reference.'}
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -983,6 +1016,17 @@ export function AssetLibrary({
                           <XIcon size={13} weight="bold" />
                         </button>
                       </div>
+                    )}
+
+                    {/* QA gate: off-style flag (visual fit below the threshold) */}
+                    {!selecting && a.style_fit != null && a.style_fit < api.STYLE_FIT_THRESHOLD && (
+                      <span
+                        title={`Off-style — ${Math.round(a.style_fit * 100)}% visual match to approved assets`}
+                        className="absolute bottom-7 right-1.5 inline-flex items-center gap-1 rounded-[6px] bg-amber-400/85 px-1.5 py-0.5 text-[10px] font-semibold text-bg"
+                      >
+                        <WarningIcon size={11} weight="fill" />
+                        {Math.round(a.style_fit * 100)}%
+                      </span>
                     )}
 
                     <figcaption className="truncate px-2 py-1.5 text-[11px] text-text-dim">
