@@ -131,6 +131,58 @@ than anything else and directly answer the senior.
 - The pitch survives the question *"isn't this just calling an API?"* — because versioning, review, permissions, localized editing, and (later) a per-project trained model are the product; the API is one commodity step.
 
 ## 7. Open questions (none blocking; defaults chosen)
-- Inpaint provider when wired: **fal.ai vs Replicate** (cost/quality/latency) — decide at B2 wiring time.
+- Inpaint provider when wired: **fal.ai vs Replicate** — see §8 (recommend **fal.ai**).
 - LoRA: per-project vs per-character granularity — decide at D3.
-- Folder delete semantics: block-if-nonempty vs cascade-to-trash — proposing **cascade to Trash** (reuses soft-delete).
+- Folder delete semantics: block-if-nonempty vs cascade-to-trash — **shipped as: cascade folders, *unfile* (not delete) the assets** (A1).
+
+## 8. Provider cost model + optimization (B2 real / D2 / D3)
+
+Status: A1, A2, B1, C, B2 (mock), D1 are **shipped & merged**. Everything below
+incurs real spend, so it stays gated until a provider + key + budget is approved.
+Prices are pay-per-use, ~mid-2026; **verify live before wiring** (links at end).
+
+### Per-action cost (ballpark)
+| Action | fal.ai | Replicate | Notes |
+|---|---|---|---|
+| Base gen (today) | — | — | OpenRouter `gemini-2.5-flash-image` ≈ **$0.04/img** (current path) |
+| **Inpaint** (B2 real) | **$0.035/megapixel** → ~$0.037 @1024², ~$0.009 @512² | flux-controlnet-inpaint ≈ **$0.086/run** (~88 s) | fal bills per output MP (cheaper + faster); Replicate per GPU-second |
+| **ControlNet** (D2) | flux-general+controlnet ≈ $0.035–0.05/MP | ≈ $0.086/run | pose/edge guidance |
+| **LoRA train** (D3) | Fast $2/run · Portrait ≈ $2.40 (1k steps) · FLUX.2 ≈ $8 (1k steps) | ≈ **$1.46/run** (H100, ~2 min, 1k steps) | one-time per project |
+| LoRA inference (D3) | ≈ $0.025–0.035/MP | per-second | same as normal gen once trained |
+
+**Recommendation:** **fal.ai** for B2 inpaint + D2 ControlNet — per-MP pricing,
+faster, and scale-to-zero like our Cloud Run setup. **Replicate** is marginally
+cheaper to *train* a LoRA; either works for D3. Use a **separate key + budget**
+(the shared OpenRouter key is near its limit).
+
+### Cost optimization (biggest levers first)
+1. **Crop-to-mask for inpaint** — send only the mask's bounding box, not the full
+   image (fal bills per MP). A 256² region ≈ **$0.002** vs ~$0.037 for full 1024²
+   (~10–20× cheaper); composite the patch back locally. *The B2 seam already
+   isolates the mask, so this is a localized change when wiring the real call.*
+2. **Resolution cap** — 512² is **4×** cheaper than 1024²; default low, upscale on demand.
+3. **Cheaper/faster model tiers** — Schnell/Turbo/Lightning (few-step) for drafts,
+   dev/pro only for approved finals. Reuse the existing `ai/cache.rs` disk cache to
+   dedupe repeat edits by (asset, mask-hash, prompt).
+4. **LoRA amortization** — train **once per project** (~$1.50–2), then every gen
+   reuses it at normal per-image cost. Run training as a background **job**
+   (existing queue + scale-to-zero) over the project's **approved** set.
+5. **Reuse the guardrail** — extend `guardrail::check_can_spend` (credit floor +
+   per-workspace daily cap) to count edits/training; the spend seam already exists
+   on every path. A per-edit/per-train $ ledger can slot in behind it later.
+6. **Deterministic-first** — B1 edits (recolor/crop/resize/flip/bg-remove) are
+   **free** and cover most "small tweaks"; reserve paid inpaint for true content
+   changes. (Shipped.)
+7. **Scale-to-zero, pay-per-use** — keep managed APIs over self-hosted GPUs until
+   volume is high; a dedicated serverless GPU only wins past steady load.
+
+### More ways to deepen consistency (cheaper rungs before D2/D3)
+- **Multi-reference conditioning** *(near-free)* — pass 2–3 approved exemplars to the
+  multimodal generator (marginal extra input tokens, no new provider) — the natural
+  extension of D1's smartest-exemplar pick.
+- **IP-Adapter / reference-only** *(cheap)* — style transfer from an approved image
+  without training a LoRA; a middle rung between D1 and D3.
+- **Embedding QA gate** *(free)* — auto-flag off-style generations using the
+  `style-fit` score we already compute, so reviewers only see on-canon candidates.
+
+> Sources: [fal pricing](https://fal.ai/pricing) · [fal FLUX inpaint](https://fal.ai/models/fal-ai/flux-lora/inpainting) · [fal LoRA fast train](https://fal.ai/models/fal-ai/flux-lora-fast-training) · [Replicate flux-controlnet-inpaint](https://replicate.com/fermatresearch/flux-controlnet-inpaint) · [Replicate fine-tune FLUX](https://replicate.com/docs/get-started/fine-tune-with-flux) · [Replicate pricing](https://replicate.com/pricing). Verify current rates before enabling spend.
