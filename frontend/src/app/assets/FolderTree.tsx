@@ -11,6 +11,7 @@ import {
   XIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
+import { ConfirmDialog } from '../ui/Dialog'
 
 /**
  * The project's folder tree — the asset's canonical home (one tree, like files),
@@ -38,6 +39,7 @@ export function FolderTree({
   const [addingUnder, setAddingUnder] = useState<string | null | undefined>(undefined)
   const [draft, setDraft] = useState('')
   const [dropTarget, setDropTarget] = useState<string | null | undefined>(undefined)
+  const [pendingDelete, setPendingDelete] = useState<api.FolderNode | null>(null)
 
   // Children indexed by parent_id ('' = root) for O(1) tree walks.
   const byParent = useMemo(() => {
@@ -87,12 +89,7 @@ export function FolderTree({
     }
   }
 
-  async function remove(f: api.FolderNode) {
-    const msg =
-      f.asset_count > 0
-        ? `Delete "${f.name}"? Its ${f.asset_count} asset${f.asset_count > 1 ? 's' : ''} will move to Unfiled (not deleted).`
-        : `Delete folder "${f.name}"?`
-    if (!window.confirm(msg)) return
+  async function doRemove(f: api.FolderNode) {
     try {
       await api.deleteFolder(f.id)
       if (selected === f.id) onSelect(null)
@@ -199,7 +196,7 @@ export function FolderTree({
                 <PencilSimpleIcon size={12} />
               </button>
               <button
-                onClick={() => remove(node)}
+                onClick={() => setPendingDelete(node)}
                 aria-label="Delete"
                 title="Delete"
                 className="grid size-5 place-items-center text-text-dim hover:text-rose-300"
@@ -281,6 +278,25 @@ export function FolderTree({
           <NewInput onCommit={() => commitCreate(null)} onCancel={() => setAddingUnder(undefined)} />
         )}
       </div>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Delete folder “${pendingDelete.name}”?`}
+          body={
+            pendingDelete.asset_count > 0
+              ? `Its ${pendingDelete.asset_count} asset${pendingDelete.asset_count > 1 ? 's' : ''} will move to Unfiled — they're not deleted.`
+              : 'This folder is empty.'
+          }
+          confirmLabel="Delete folder"
+          tone="danger"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const f = pendingDelete
+            setPendingDelete(null)
+            doRemove(f)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components -- route-config module:
+   it exports `router` (not a component) alongside lazy route definitions, and is
+   not a fast-refresh target. */
 import { Suspense, lazy, type ReactNode } from 'react'
 import { createBrowserRouter } from 'react-router-dom'
 import { SpinnerGapIcon } from '@phosphor-icons/react'

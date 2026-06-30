@@ -18,6 +18,7 @@ import {
   MinusIcon,
   PlusIcon,
   CircleDashedIcon,
+  SidebarSimpleIcon,
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
@@ -132,6 +133,9 @@ export function AssetLibrary({
   const [offStyle, setOffStyle] = useState(false)
   // A3: the library is the hero; the generate bar is collapsed behind "+ New".
   const [showGen, setShowGen] = useState(false)
+  // The filter rail can collapse to reclaim board width (and is the first step
+  // toward a mobile drawer).
+  const [railOpen, setRailOpen] = useState(true)
 
   // Multi-select
   const [selecting, setSelecting] = useState(false)
@@ -552,10 +556,11 @@ export function AssetLibrary({
 
   return (
     <div className="glass flex min-h-0 flex-1 overflow-hidden rounded-[16px]">
-      {/* Filter rail */}
+      {/* Filter rail (collapsible — reclaims board width) */}
+      {railOpen ? (
       <aside className="flex w-56 shrink-0 flex-col border-r border-white/8">
-        <div className="border-b border-white/8 p-3">
-          <div className="flex items-center gap-2 rounded-[10px] bg-surface-2/60 px-2.5 py-2 transition focus-within:ring-1 focus-within:ring-teal/40">
+        <div className="flex items-center gap-2 border-b border-white/8 p-3">
+          <div className="flex flex-1 items-center gap-2 rounded-[10px] bg-surface-2/60 px-2.5 py-2 transition focus-within:ring-1 focus-within:ring-teal/40">
             <MagnifyingGlassIcon size={14} className="text-text-dim" />
             <input
               value={query}
@@ -565,6 +570,14 @@ export function AssetLibrary({
               className="w-full bg-transparent text-xs text-text outline-none placeholder:text-text-dim"
             />
           </div>
+          <button
+            onClick={() => setRailOpen(false)}
+            aria-label="Collapse filters"
+            title="Collapse filters"
+            className="grid size-8 shrink-0 place-items-center rounded-[8px] text-text-dim transition hover:bg-white/5 hover:text-text"
+          >
+            <SidebarSimpleIcon size={16} />
+          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -649,6 +662,23 @@ export function AssetLibrary({
           </button>
         )}
       </aside>
+      ) : (
+        <aside className="flex w-12 shrink-0 flex-col items-center gap-2 border-r border-white/8 py-3">
+          <button
+            onClick={() => setRailOpen(true)}
+            aria-label="Show filters"
+            title="Show filters"
+            className="relative grid size-9 place-items-center rounded-[10px] text-text-dim transition hover:bg-white/5 hover:text-text"
+          >
+            <SidebarSimpleIcon size={18} />
+            {activeFilters > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 grid size-4 place-items-center rounded-full bg-teal text-[9px] font-bold text-bg">
+                {activeFilters}
+              </span>
+            )}
+          </button>
+        </aside>
+      )}
 
       {/* Main column */}
       <div className="flex min-h-0 flex-1 flex-col">
@@ -952,8 +982,10 @@ export function AssetLibrary({
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <div className="px-5 pt-3 empty:hidden">
           <JobsBanner projectId={projectId} />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
           {displayed.length === 0 ? (
             <p className="px-1 py-16 text-center text-sm text-text-dim">
               {activeFilters > 0

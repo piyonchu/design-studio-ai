@@ -43,10 +43,10 @@ export function ProjectCard({
 
       <div className="p-4">
         <h3 className="truncate text-sm font-semibold text-text">{project.name}</h3>
-        <div className="mt-2 flex items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 rounded-full bg-teal/15 px-2 py-0.5 text-[11px] font-medium text-teal-bright">
-            <SparkleIcon size={11} weight="fill" />
-            {project.brief ? project.brief : 'No AI updates yet'}
+        <div className="mt-2 flex min-w-0 items-center gap-1.5">
+          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-teal/15 px-2 py-0.5 text-[11px] font-medium text-teal-bright">
+            <SparkleIcon size={11} weight="fill" className="shrink-0" />
+            <span className="truncate">{project.brief ? project.brief : 'No AI updates yet'}</span>
           </span>
         </div>
       </div>
