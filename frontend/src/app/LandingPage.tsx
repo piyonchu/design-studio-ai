@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRightIcon,
@@ -74,10 +75,12 @@ function AssetTile({
   name,
   tone,
   className = '',
+  index = 0,
 }: {
   name: string
   tone: 'teal' | 'indigo' | 'amber' | 'rose'
   className?: string
+  index?: number
 }) {
   const toneClass = {
     teal: 'from-teal/40 via-teal/10 to-surface-2 ring-teal/35',
@@ -88,7 +91,8 @@ function AssetTile({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-[14px] bg-gradient-to-br ${toneClass} p-3 ring-1 ${className}`}
+      style={{ '--i': index } as CSSProperties}
+      className={`hero-tile relative overflow-hidden rounded-[14px] bg-gradient-to-br ${toneClass} p-3 ring-1 ${className}`}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_15%,rgb(255_255_255_/_0.22),transparent_30%)]" />
       <div className="relative flex aspect-square items-end">
@@ -151,10 +155,14 @@ export function LandingPage() {
           </Link>
           <Link
             to="/login?mode=signup"
-            className="inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-teal px-4 py-2.5 text-sm font-semibold text-bg transition hover:brightness-105 active:translate-y-px"
+            className="group inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-teal px-4 py-2.5 text-sm font-semibold text-bg transition hover:brightness-105 active:translate-y-px"
           >
             Create workspace
-            <ArrowRightIcon size={15} weight="bold" />
+            <ArrowRightIcon
+              size={15}
+              weight="bold"
+              className="transition-transform duration-200 ease-out group-hover:translate-x-0.5"
+            />
           </Link>
         </div>
       </header>
@@ -162,23 +170,36 @@ export function LandingPage() {
       <main className="relative z-10">
         <section className="mx-auto grid w-full max-w-7xl items-center gap-10 px-4 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-16 lg:grid-cols-[0.95fr_1.05fr] lg:px-8">
           <div className="max-w-3xl">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-teal/25 bg-teal/10 px-3 py-1.5 text-sm font-medium text-teal-bright">
+            <div
+              style={{ '--i': 0 } as CSSProperties}
+              className="hero-rise mb-6 inline-flex items-center gap-2 rounded-full border border-teal/25 bg-teal/10 px-3 py-1.5 text-sm font-medium text-teal-bright"
+            >
               <span className="size-1.5 rounded-full bg-teal-bright" />
               Reference-driven asset production
             </div>
-            <h1 className="max-w-4xl text-balance text-[clamp(2.75rem,7vw,5.75rem)] font-semibold leading-[0.95] tracking-[-0.04em] text-text">
+            <h1
+              style={{ '--i': 1 } as CSSProperties}
+              className="hero-rise max-w-4xl text-balance text-[clamp(2.75rem,7vw,5.75rem)] font-semibold leading-[0.95] tracking-[-0.04em] text-text"
+            >
               One reference. A whole consistent set.
             </h1>
-            <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-text-muted sm:text-xl">
+            <p
+              style={{ '--i': 2 } as CSSProperties}
+              className="hero-rise mt-6 max-w-2xl text-pretty text-lg leading-8 text-text-muted sm:text-xl"
+            >
               CanonForge turns approved art direction into project memory: derive variants, review candidates, organize libraries, and export packs that are ready for production tools.
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <div style={{ '--i': 3 } as CSSProperties} className="hero-rise mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
                 to="/login?mode=signup"
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-teal px-5 py-3 text-sm font-semibold text-bg transition hover:brightness-105 active:translate-y-px"
+                className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-teal px-5 py-3 text-sm font-semibold text-bg transition hover:brightness-105 active:translate-y-px"
               >
                 Start with a reference
-                <ArrowRightIcon size={16} weight="bold" />
+                <ArrowRightIcon
+                  size={16}
+                  weight="bold"
+                  className="transition-transform duration-200 ease-out group-hover:translate-x-0.5"
+                />
               </Link>
               <a
                 href="#loop"
@@ -187,12 +208,18 @@ export function LandingPage() {
                 See the workflow
               </a>
             </div>
-            <p className="mt-5 max-w-xl text-sm leading-6 text-text-dim">
+            <p
+              style={{ '--i': 4 } as CSSProperties}
+              className="hero-rise mt-5 max-w-xl text-sm leading-6 text-text-dim"
+            >
               Mock-first by default for free development. Real image, embedding, LLM, and audio providers stay behind explicit flags.
             </p>
           </div>
 
-          <div className="glass relative rounded-[24px] p-3 shadow-2xl">
+          <div
+            style={{ '--i': 2 } as CSSProperties}
+            className="glass hero-rise relative rounded-[24px] p-3 shadow-2xl"
+          >
             <div className="rounded-[20px] border border-white/8 bg-surface/80 p-4">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <div>
@@ -205,11 +232,11 @@ export function LandingPage() {
               </div>
 
               <div className="grid grid-cols-4 gap-2">
-                <AssetTile name="base" tone="teal" className="col-span-2 row-span-2" />
-                <AssetTile name="pose" tone="indigo" />
-                <AssetTile name="recolor" tone="amber" />
-                <AssetTile name="attack" tone="rose" />
-                <AssetTile name="matching" tone="teal" />
+                <AssetTile name="base" tone="teal" className="col-span-2 row-span-2" index={0} />
+                <AssetTile name="pose" tone="indigo" index={1} />
+                <AssetTile name="recolor" tone="amber" index={2} />
+                <AssetTile name="attack" tone="rose" index={3} />
+                <AssetTile name="matching" tone="teal" index={4} />
               </div>
 
               <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.8fr]">
@@ -220,9 +247,9 @@ export function LandingPage() {
                   </div>
                   <div className="flex items-center gap-2 text-[11px] text-text-dim">
                     <span className="rounded-[8px] bg-teal/15 px-2 py-1 text-teal-bright">base</span>
-                    <span className="h-px flex-1 bg-white/15" />
+                    <span style={{ '--i': 0 } as CSSProperties} className="hero-connector h-px flex-1 bg-white/15" />
                     <span className="rounded-[8px] bg-indigo/15 px-2 py-1 text-indigo-bright">derive</span>
-                    <span className="h-px flex-1 bg-white/15" />
+                    <span style={{ '--i': 1 } as CSSProperties} className="hero-connector h-px flex-1 bg-white/15" />
                     <span className="rounded-[8px] bg-white/8 px-2 py-1 text-text-muted">review</span>
                   </div>
                 </div>
@@ -289,7 +316,7 @@ export function LandingPage() {
             {verticals.map(({ title, body, icon: Icon, accent, span }) => (
               <article
                 key={title}
-                className={`glass rounded-[20px] p-5 ${span}`}
+                className={`glass rounded-[20px] p-5 transition-transform duration-300 ease-out will-change-transform hover:-translate-y-1 ${span}`}
               >
                 <div
                   className={`mb-5 grid size-10 place-items-center rounded-[12px] ${
@@ -317,10 +344,14 @@ export function LandingPage() {
               <div className="mt-7">
                 <Link
                   to="/login?mode=signup"
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-teal px-5 py-3 text-sm font-semibold text-bg transition hover:brightness-105 active:translate-y-px"
+                  className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-teal px-5 py-3 text-sm font-semibold text-bg transition hover:brightness-105 active:translate-y-px"
                 >
                   Create your first canon
-                  <ArrowRightIcon size={16} weight="bold" />
+                  <ArrowRightIcon
+                    size={16}
+                    weight="bold"
+                    className="transition-transform duration-200 ease-out group-hover:translate-x-0.5"
+                  />
                 </Link>
               </div>
             </div>
@@ -329,7 +360,10 @@ export function LandingPage() {
               {/* Provenance-style rows — a stacked fact list, deliberately not a
                   second icon-card grid (that's the verticals section above). */}
               {proof.map(({ title, body }) => (
-                <article key={title} className="rounded-[18px] border border-white/8 bg-white/[0.03] px-5 py-4">
+                <article
+                  key={title}
+                  className="rounded-[18px] border border-white/8 bg-white/[0.03] px-5 py-4 transition-colors duration-200 hover:border-white/15 hover:bg-white/[0.05]"
+                >
                   <h3 className="text-sm font-semibold text-text">{title}</h3>
                   <p className="mt-1 text-sm leading-6 text-text-muted">{body}</p>
                 </article>
