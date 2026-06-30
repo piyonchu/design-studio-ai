@@ -326,17 +326,12 @@ export function LandingPage() {
             </div>
 
             <div className="grid gap-3">
-              {proof.map(({ title, body, icon: Icon }) => (
-                <article key={title} className="rounded-[18px] border border-white/8 bg-white/[0.03] p-4">
-                  <div className="flex gap-4">
-                    <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-teal/15 text-teal-bright">
-                      <Icon size={20} weight="fill" />
-                    </span>
-                    <div>
-                      <h3 className="font-semibold text-text">{title}</h3>
-                      <p className="mt-1 text-sm leading-6 text-text-muted">{body}</p>
-                    </div>
-                  </div>
+              {/* Provenance-style rows — a stacked fact list, deliberately not a
+                  second icon-card grid (that's the verticals section above). */}
+              {proof.map(({ title, body }) => (
+                <article key={title} className="rounded-[18px] border border-white/8 bg-white/[0.03] px-5 py-4">
+                  <h3 className="text-sm font-semibold text-text">{title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-text-muted">{body}</p>
                 </article>
               ))}
               <article className="glass rounded-[18px] p-4">

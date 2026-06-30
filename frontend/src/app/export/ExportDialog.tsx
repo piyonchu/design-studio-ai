@@ -8,8 +8,10 @@ import {
   PackageIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
-import { ApiError } from '../../lib/api'
+import { formatApiError } from '../../lib/api'
 import { enginesFor, type Engine } from '../verticals'
+import { Dialog } from '../ui/Dialog'
+import { ErrorBanner } from '../ui/ErrorBanner'
 
 const ENGINE_LABEL: Record<Engine, string> = { godot: 'Godot 4', unity: 'Unity' }
 const ENGINE_NOTE: Record<Engine, string> = {
@@ -39,6 +41,7 @@ export function ExportDialog({
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [checkTick, setCheckTick] = useState(0)
 
   // The engine packs this project's vertical supports (e.g. Godot + Unity for
   // game_2d). When present, default to the first — it's the headline of an
@@ -48,15 +51,18 @@ export function ExportDialog({
 
   useEffect(() => {
     let alive = true
+    setLoading(true)
+    setError(null)
+    setReport(null)
     api
       .checkExport(projectId, assetIds)
       .then((r) => alive && setReport(r))
-      .catch((e) => alive && setError(e instanceof ApiError ? e.message : 'Check failed.'))
+      .catch((e) => alive && setError(formatApiError(e, "Couldn't verify these assets for export. Try again.")))
       .finally(() => alive && setLoading(false))
     return () => {
       alive = false
     }
-  }, [projectId, assetIds])
+  }, [projectId, assetIds, checkTick])
 
   // Group the report rows by their pack group (slugged role), first-seen order.
   const groupedEntries = useMemo<[string, api.AssetCheck[]][]>(() => {
@@ -77,21 +83,24 @@ export function ExportDialog({
     try {
       await api.downloadExport(projectId, assetIds, target === 'generic' ? undefined : target)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Download failed.')
+      setError(formatApiError(e, "Couldn't download the export pack. Try again."))
     } finally {
       setDownloading(false)
     }
   }
 
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/50" onClick={onClose} aria-hidden />
-      <div className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-[520px] max-w-[94vw] -translate-x-1/2 -translate-y-1/2 flex-col rounded-[16px] border border-white/10 bg-surface-2 shadow-2xl">
+    <Dialog
+      onClose={onClose}
+      panelClassName="flex max-h-[80vh] w-[520px] max-w-[94vw] flex-col rounded-[16px] border border-white/10 bg-surface-2 shadow-2xl"
+    >
+      {({ titleId }) => (
+      <>
         <header className="flex items-center gap-2 border-b border-white/8 px-4 py-3">
           <span className="grid size-7 place-items-center rounded-[8px] bg-accent/15 text-teal-bright">
             <PackageIcon size={15} weight="fill" />
           </span>
-          <p className="text-sm font-medium text-text">Export · {title}</p>
+          <h2 id={titleId} className="text-sm font-medium text-text">Export · {title}</h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -106,7 +115,13 @@ export function ExportDialog({
             <SpinnerGapIcon size={20} className="animate-spin" />
           </div>
         ) : !report ? (
-          <p className="px-4 py-10 text-center text-sm text-rose-300">{error ?? 'No report.'}</p>
+          <div className="px-4 py-10">
+            <ErrorBanner
+              message={error ?? "Couldn't run the export check. Retry, or remove blocked assets from your selection."}
+              onRetry={() => setCheckTick((n) => n + 1)}
+              className="text-left"
+            />
+          </div>
         ) : (
           <>
             <div className="flex items-center gap-3 border-b border-white/8 px-4 py-3 text-sm">
@@ -191,7 +206,7 @@ export function ExportDialog({
                 onClick={download}
                 disabled={downloading || report.ok_count === 0}
                 className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] bg-teal px-4 py-2 text-sm font-semibold text-bg transition active:translate-y-px disabled:opacity-50"
-                title={report.ok_count === 0 ? 'Nothing exportable' : 'Download the zip pack'}
+                title={report.ok_count === 0 ? 'No exportable assets in this selection' : 'Download the zip pack'}
               >
                 {downloading ? (
                   <SpinnerGapIcon size={14} className="animate-spin" />
@@ -204,7 +219,8 @@ export function ExportDialog({
             </footer>
           </>
         )}
-      </div>
-    </>
+      </>
+      )}
+    </Dialog>
   )
 }

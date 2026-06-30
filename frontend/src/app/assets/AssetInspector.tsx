@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
-import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon, StarIcon } from '@phosphor-icons/react'
+import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon, StarIcon, SparkleIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
-import { ApiError } from '../../lib/api'
+import { formatApiError } from '../../lib/api'
 import { CommentThread } from './CommentThread'
 import { VersionHistory } from './VersionHistory'
 import { EditTools } from './EditTools'
+import { Dialog } from '../ui/Dialog'
+import { ErrorBanner } from '../ui/ErrorBanner'
+import { AssetImage } from '../ui/AssetImage'
 
 /**
  * Asset inspector — a slide-over for one asset: preview, editable role/tags,
@@ -17,12 +20,16 @@ export function AssetInspector({
   onNavigate,
   onChanged,
   onDeleted,
+  onDeriveFrom,
 }: {
   assetId: string | null
   onClose: () => void
   onNavigate: (id: string) => void
   onChanged: (asset: api.Asset) => void
   onDeleted: (id: string) => void
+  /** Make this asset the board's derivation base (an explicit, discoverable
+   *  path to derive, vs. the board's otherwise-hidden tile-click). */
+  onDeriveFrom?: (id: string) => void
 }) {
   const [detail, setDetail] = useState<api.AssetDetail | null>(null)
   const [name, setName] = useState('')
@@ -37,12 +44,15 @@ export function AssetInspector({
   const [selectedCol, setSelectedCol] = useState('')
   const [added, setAdded] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
     if (!assetId) return
     let alive = true
     setDetail(null)
     setError(null)
+    setLoadError(null)
     setSaved(false)
     setConfirming(false)
     setDeleting(false)
@@ -59,11 +69,11 @@ export function AssetInspector({
         api.listCollections(d.project_id).then((cs) => alive && setCollections(cs)).catch(() => {})
         api.listFolders(d.project_id).then((fs) => alive && setFolders(fs)).catch(() => {})
       })
-      .catch((e) => alive && setError(e instanceof ApiError ? e.message : 'Failed to load.'))
+      .catch((e) => alive && setLoadError(formatApiError(e, "Couldn't load this asset. It may have been deleted.")))
     return () => {
       alive = false
     }
-  }, [assetId])
+  }, [assetId, reloadTick])
 
   if (!assetId) return null
 
@@ -82,7 +92,7 @@ export function AssetInspector({
       onChanged(updated)
       setSaved(true)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Save failed.')
+      setError(formatApiError(e, "Couldn't save your changes. Try again."))
     } finally {
       setBusy(false)
     }
@@ -97,7 +107,7 @@ export function AssetInspector({
       setDetail((d) => (d ? { ...d, ...updated } : d))
       onChanged(updated)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Update failed.')
+      setError(formatApiError(e, "Couldn't update the exemplar flag. Try again."))
     } finally {
       setBusy(false)
     }
@@ -123,7 +133,7 @@ export function AssetInspector({
       setDetail((d) => (d ? { ...d, ...updated } : d))
       onChanged(updated)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Move failed.')
+      setError(formatApiError(e, "Couldn't move the asset. Try again."))
     }
   }
 
@@ -133,7 +143,7 @@ export function AssetInspector({
       await api.addToCollection(selectedCol, [detail.id])
       setAdded(collections.find((c) => c.id === selectedCol)?.name ?? 'collection')
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Add failed.')
+      setError(formatApiError(e, "Couldn't add to the collection. Try again."))
     }
   }
 
@@ -146,17 +156,21 @@ export function AssetInspector({
       onDeleted(detail.id)
       onClose()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Delete failed.')
+      setError(formatApiError(e, "Couldn't delete this asset. Try again."))
       setDeleting(false)
     }
   }
 
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-hidden />
-      <aside className="fixed inset-y-0 right-0 z-50 flex w-[380px] max-w-[92vw] flex-col border-l border-white/10 bg-surface-2 shadow-2xl">
+    <Dialog
+      variant="right"
+      onClose={onClose}
+      panelClassName="flex h-full w-[380px] max-w-[92vw] flex-col border-l border-white/10 bg-surface-2 shadow-2xl"
+    >
+      {({ titleId }) => (
+      <>
         <header className="flex items-center gap-2 border-b border-white/8 px-4 py-3">
-          <p className="text-sm font-medium text-text">Inspector</p>
+          <h2 id={titleId} className="text-sm font-medium text-text">Inspector</h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -167,8 +181,16 @@ export function AssetInspector({
         </header>
 
         {!detail ? (
-          <div className="grid flex-1 place-items-center text-text-dim">
-            {error ? <p className="text-sm text-rose-300">{error}</p> : <SpinnerGapIcon size={20} className="animate-spin" />}
+          <div className="grid flex-1 place-content-center gap-3 p-4 text-center">
+            {loadError ? (
+              <ErrorBanner
+                message={loadError}
+                onRetry={() => setReloadTick((n) => n + 1)}
+                className="text-left"
+              />
+            ) : (
+              <SpinnerGapIcon size={20} className="mx-auto animate-spin text-text-dim" />
+            )}
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -178,7 +200,7 @@ export function AssetInspector({
                 <audio controls src={detail.url} className="w-full" />
               </div>
             ) : (
-              <img
+              <AssetImage
                 src={detail.url}
                 alt={detail.role ?? ''}
                 className="mb-3 aspect-square w-full rounded-[12px] object-contain ring-1 ring-white/10"
@@ -197,6 +219,16 @@ export function AssetInspector({
                 </span>
               )}
             </div>
+
+            {detail.kind !== 'audio' && onDeriveFrom && (
+              <button
+                onClick={() => onDeriveFrom(detail.id)}
+                className="mb-3 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-teal px-3 py-2 text-sm font-semibold text-bg transition active:translate-y-px"
+              >
+                <SparkleIcon size={14} weight="fill" />
+                Derive from this
+              </button>
+            )}
 
             <button
               onClick={toggleExemplar}
@@ -228,6 +260,7 @@ export function AssetInspector({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={api.displayName(detail)}
+                maxLength={120}
                 className="rounded-[10px] bg-surface/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
               />
             </label>
@@ -237,6 +270,7 @@ export function AssetInspector({
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
                 placeholder="e.g. character, prop, tile"
+                maxLength={64}
                 className="rounded-[10px] bg-surface/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
               />
             </label>
@@ -246,6 +280,7 @@ export function AssetInspector({
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
                 placeholder="hero, wip"
+                maxLength={500}
                 className="rounded-[10px] bg-surface/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
               />
             </label>
@@ -259,7 +294,7 @@ export function AssetInspector({
                 Save
               </button>
               {saved && <span className="text-xs text-teal-bright">Saved</span>}
-              {error && <span className="text-xs text-rose-300">{error}</span>}
+              {error && <span className="min-w-0 break-words text-xs text-rose-300">{error}</span>}
             </div>
 
             <label className="mb-5 grid gap-1.5">
@@ -286,6 +321,7 @@ export function AssetInspector({
                     setSelectedCol(e.target.value)
                     setAdded(null)
                   }}
+                  aria-label="Add to collection"
                   className="rounded-[10px] bg-surface/60 px-2.5 py-2 text-sm text-text outline-none focus:ring-1 focus:ring-teal/40"
                 >
                   <option value="">Add to collection…</option>
@@ -305,7 +341,9 @@ export function AssetInspector({
                 {added && <span className="text-xs text-teal-bright">Added to {added}</span>}
               </div>
             ) : (
-              <p className="mb-5 text-xs text-text-dim">No collections yet — create one in the Collections tab.</p>
+              <p className="mb-5 text-xs text-text-dim">
+                No collections yet — create one on the Collections tab, then add assets from here.
+              </p>
             )}
 
             {detail.kind !== 'audio' && (
@@ -342,7 +380,7 @@ export function AssetInspector({
                   onClick={() => onNavigate(detail.base!.id)}
                   className="flex w-full items-center gap-2 rounded-[10px] p-1.5 text-left transition hover:bg-white/5"
                 >
-                  <img src={detail.base.url} alt="" className="size-12 rounded-[8px] object-cover ring-1 ring-white/10" />
+                  <AssetImage src={detail.base.url} alt="" className="size-12 rounded-[8px] object-cover ring-1 ring-white/10" />
                   <span className="truncate text-xs text-text">{detail.base.role ?? detail.base.prompt ?? 'base'}</span>
                 </button>
               </div>
@@ -359,7 +397,7 @@ export function AssetInspector({
                       title={d.derivation ?? ''}
                       className="overflow-hidden rounded-[8px] ring-1 ring-white/10 transition hover:ring-teal"
                     >
-                      <img src={d.url} alt="" className="aspect-square w-full object-cover" />
+                      <AssetImage src={d.url} alt="" className="aspect-square w-full object-cover" />
                     </button>
                   ))}
                 </div>
@@ -367,7 +405,9 @@ export function AssetInspector({
             )}
 
             {!detail.base && detail.derivatives.length === 0 && (
-              <p className="mt-3 text-xs text-text-dim">No lineage yet — derive from this asset to grow it.</p>
+              <p className="mt-3 text-xs text-text-dim">
+                No lineage yet. Derive from this asset on the board to grow its family tree.
+              </p>
             )}
 
             <div className="mt-6 border-t border-white/8 pt-4">
@@ -401,7 +441,8 @@ export function AssetInspector({
             </div>
           </div>
         )}
-      </aside>
-    </>
+      </>
+      )}
+    </Dialog>
   )
 }

@@ -38,8 +38,8 @@ export function JobsBanner({ projectId }: { projectId: string }) {
     <div className="mb-3 flex items-center gap-2 rounded-[10px] border border-teal/20 bg-teal/8 px-3 py-2 text-xs text-teal-bright">
       <SpinnerGapIcon size={14} className="animate-spin" />
       <span>
-        Generating — {active.length} job{active.length > 1 ? 's' : ''} in progress
-        {running > 0 ? ` · ${running} running` : ' · queued'}
+        Generating assets — {active.length} job{active.length > 1 ? 's' : ''} queued
+        {running > 0 ? ` · ${running} running now` : ''}
       </span>
     </div>
   )

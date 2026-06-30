@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType } from 'react'
+import { Suspense, lazy, useEffect, useState, type ComponentType } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeftIcon,
@@ -9,17 +9,24 @@ import {
   StackIcon,
   ClockCounterClockwiseIcon,
   ShieldCheckIcon,
+  SpinnerGapIcon,
 } from '@phosphor-icons/react'
 import * as api from '../lib/api'
-import { ApiError } from '../lib/api'
+import { formatApiError } from '../lib/api'
 import { AssetLibrary } from './assets/AssetLibrary'
-import { ReviewQueue } from './assets/ReviewQueue'
-import { LineageView } from './assets/LineageView'
-import { CanonView } from './canon/CanonView'
-import { ContextAsk } from './canon/ContextAsk'
-import { CollectionsView } from './collections/CollectionsView'
-import { ActivityView } from './activity/ActivityView'
-import { AccessView } from './AccessView'
+import { ErrorBanner } from './ui/ErrorBanner'
+
+// The Board is the default tab → eager. The rest split into their own chunks,
+// loaded the first time their tab is opened.
+const ReviewQueue = lazy(() => import('./assets/ReviewQueue').then((m) => ({ default: m.ReviewQueue })))
+const LineageView = lazy(() => import('./assets/LineageView').then((m) => ({ default: m.LineageView })))
+const CanonView = lazy(() => import('./canon/CanonView').then((m) => ({ default: m.CanonView })))
+const ContextAsk = lazy(() => import('./canon/ContextAsk').then((m) => ({ default: m.ContextAsk })))
+const CollectionsView = lazy(() =>
+  import('./collections/CollectionsView').then((m) => ({ default: m.CollectionsView })),
+)
+const ActivityView = lazy(() => import('./activity/ActivityView').then((m) => ({ default: m.ActivityView })))
+const AccessView = lazy(() => import('./AccessView').then((m) => ({ default: m.AccessView })))
 
 type Tab = 'canon' | 'assets' | 'review' | 'lineage' | 'collections' | 'activity' | 'access'
 
@@ -45,17 +52,19 @@ export function ProjectWorkspace() {
   const [tab, setTab] = useState<Tab>('assets')
   const [access, setAccess] = useState<api.ProjectAccess | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
     if (!projectId) return
     let alive = true
+    setError(null)
     api
       .getProject(projectId)
       .then((p) => {
         if (alive) setProject(p)
       })
       .catch((err) => {
-        if (alive) setError(err instanceof ApiError ? err.message : 'Failed to load project.')
+        if (alive) setError(formatApiError(err, "Couldn't load this project. It may have been deleted or you may not have access."))
       })
     api
       .getProjectAccess(projectId)
@@ -64,7 +73,7 @@ export function ProjectWorkspace() {
     return () => {
       alive = false
     }
-  }, [projectId])
+  }, [projectId, reloadTick])
 
   // Until access resolves, don't disable approval (the backend still enforces).
   const canApprove = access ? access.can_approve : true
@@ -74,12 +83,12 @@ export function ProjectWorkspace() {
       <div className="app-aurora" />
 
       {/* Left rail */}
-      <aside className="relative z-20 flex w-48 shrink-0 flex-col gap-1 px-3 py-3">
-        <div className="flex items-center gap-2 px-1 py-2">
+      <aside className="relative z-20 flex w-48 shrink-0 flex-col border-r border-white/6 px-3 py-3">
+        <div className="flex items-center gap-2 px-1 pb-2">
           <button
             onClick={() => navigate('/')}
             aria-label="Back to workspace"
-            className="grid size-8 shrink-0 place-items-center rounded-[10px] text-text-dim transition hover:bg-white/5 hover:text-text"
+            className="icon-btn size-8 shrink-0"
           >
             <ArrowLeftIcon size={18} />
           </button>
@@ -88,13 +97,17 @@ export function ProjectWorkspace() {
           </p>
         </div>
 
-        <nav className="mt-1 flex flex-col gap-0.5">
+        <nav className="mt-2 flex flex-col gap-0.5 border-t border-white/6 pt-3">
           {NAV.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium transition ${
-                tab === id ? 'bg-teal/15 text-teal-bright' : 'text-text-dim hover:bg-white/5 hover:text-text'
+              className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/40 ${
+              tab === id
+                ? 'bg-teal/15 text-teal-bright ring-1 ring-teal/20'
+                : id === 'review'
+                  ? 'text-text-dim hover:bg-warning/8 hover:text-warning'
+                  : 'text-text-dim hover:bg-white/5 hover:text-text'
               }`}
             >
               <Icon size={17} weight={tab === id ? 'fill' : 'regular'} />
@@ -107,30 +120,41 @@ export function ProjectWorkspace() {
       {/* Content */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col py-3 pr-3">
         {error && (
-          <p className="mb-2 rounded-[10px] border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
-            {error}
-          </p>
+          <ErrorBanner
+            message={error}
+            onRetry={() => setReloadTick((n) => n + 1)}
+            onDismiss={() => setError(null)}
+            className="mb-2"
+          />
         )}
-        <div className="flex min-h-0 flex-1">
-          {projectId &&
-            (tab === 'canon' ? (
-              <div className="flex min-h-0 flex-1 flex-col gap-3">
-                <ContextAsk projectId={projectId} />
-                <CanonView projectId={projectId} vertical={project?.vertical} />
+        <div className="tab-fill">
+          <Suspense
+            fallback={
+              <div className="flex min-h-0 flex-1 items-center justify-center text-text-dim">
+                <SpinnerGapIcon size={20} className="animate-spin" />
               </div>
-            ) : tab === 'review' ? (
-              <ReviewQueue projectId={projectId} canApprove={canApprove} />
-            ) : tab === 'lineage' ? (
-              <LineageView projectId={projectId} />
-            ) : tab === 'collections' ? (
-              <CollectionsView projectId={projectId} vertical={project?.vertical} />
-            ) : tab === 'activity' ? (
-              <ActivityView projectId={projectId} />
-            ) : tab === 'access' ? (
-              <AccessView projectId={projectId} />
-            ) : (
-              <AssetLibrary projectId={projectId} vertical={project?.vertical} canApprove={canApprove} />
-            ))}
+            }
+          >
+            {projectId &&
+              (tab === 'canon' ? (
+                <div className="tab-fill gap-4">
+                  <ContextAsk projectId={projectId} />
+                  <CanonView projectId={projectId} vertical={project?.vertical} />
+                </div>
+              ) : tab === 'review' ? (
+                <ReviewQueue projectId={projectId} canApprove={canApprove} />
+              ) : tab === 'lineage' ? (
+                <LineageView projectId={projectId} />
+              ) : tab === 'collections' ? (
+                <CollectionsView projectId={projectId} vertical={project?.vertical} />
+              ) : tab === 'activity' ? (
+                <ActivityView projectId={projectId} />
+              ) : tab === 'access' ? (
+                <AccessView projectId={projectId} />
+              ) : (
+                <AssetLibrary projectId={projectId} vertical={project?.vertical} canApprove={canApprove} />
+              ))}
+          </Suspense>
         </div>
       </div>
     </div>

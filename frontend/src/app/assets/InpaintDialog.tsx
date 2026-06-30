@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { XIcon, SpinnerGapIcon, SparkleIcon, EraserIcon, PaintBrushIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
+import { Dialog } from '../ui/Dialog'
 
 /**
  * Masked / inpaint edit (B2). Brush over the region to change, type what it
@@ -76,15 +77,18 @@ export function InpaintDialog({
   }
 
   return (
-    <>
-      <div className="fixed inset-0 z-[60] bg-black/60" onClick={onClose} aria-hidden />
-      <div className="fixed inset-0 z-[70] grid place-items-center p-4" role="dialog" aria-modal>
-        <div className="glass flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[16px]">
+    <Dialog
+      onClose={onClose}
+      z="z-[70]"
+      panelClassName="glass flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[16px]"
+    >
+      {({ titleId }) => (
+        <>
           <header className="flex items-center gap-2 border-b border-white/8 px-4 py-3">
             <span className="grid size-7 place-items-center rounded-[8px] bg-accent/15 text-teal-bright">
               <PaintBrushIcon size={15} weight="fill" />
             </span>
-            <p className="text-sm font-medium text-text">Edit a region</p>
+            <h2 id={titleId} className="text-sm font-medium text-text">Edit a region</h2>
             <span className="text-xs text-text-dim">· brush the area, describe the change</span>
             <button
               onClick={onClose}
@@ -149,6 +153,7 @@ export function InpaintDialog({
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="What should the region become? (e.g. red hat, remove the extra finger)"
+                aria-label="Describe what the masked region should become"
                 className="min-w-0 flex-1 rounded-[8px] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
               />
               <button
@@ -161,8 +166,8 @@ export function InpaintDialog({
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </>
+        </>
+      )}
+    </Dialog>
   )
 }

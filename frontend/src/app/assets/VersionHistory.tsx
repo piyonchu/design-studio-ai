@@ -187,7 +187,7 @@ export function VersionHistory({
                   title={isHead ? 'Current version' : 'Compare with current'}
                   className="size-11 shrink-0 overflow-hidden rounded-[8px] ring-1 ring-white/10 transition hover:ring-teal"
                 >
-                  <img src={v.url} alt={`v${v.version}`} className="size-full object-cover" />
+                  <img src={v.url} alt={`v${v.version}`} loading="lazy" decoding="async" className="size-full object-cover" />
                 </button>
               ) : (
                 <span className="grid size-11 shrink-0 place-items-center rounded-[8px] bg-surface/60 text-[11px] font-semibold text-text-dim ring-1 ring-white/10">

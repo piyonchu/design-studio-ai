@@ -9,8 +9,11 @@ import {
   PackageIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
-import { ApiError } from '../../lib/api'
+import { formatApiError } from '../../lib/api'
 import { ExportDialog } from '../export/ExportDialog'
+import { Panel, PanelBody, PanelHeader, PanelIcon, PanelInset } from '../ui/Panel'
+import { ErrorBanner } from '../ui/ErrorBanner'
+import { AssetImage } from '../ui/AssetImage'
 
 /**
  * Collections — asset packs. List view (cards + create) and a detail view
@@ -39,7 +42,7 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
     api
       .getCollection(openId)
       .then((d) => alive && setDetail(d))
-      .catch((e) => alive && setError(e instanceof ApiError ? e.message : 'Failed to load.'))
+      .catch((e) => alive && setError(formatApiError(e, "Couldn't load this collection. Try again.")))
     return () => {
       alive = false
     }
@@ -56,7 +59,7 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
       setName('')
       setCollections(await api.listCollections(projectId))
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Create failed.')
+      setError(formatApiError(err, "Couldn't create the collection. Try a different name."))
     } finally {
       setBusy(false)
     }
@@ -71,7 +74,7 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
         c.map((x) => (x.id === openId ? { ...x, item_count: x.item_count - 1 } : x)),
       )
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Remove failed.')
+      setError(formatApiError(err, "Couldn't remove the asset from this collection. Try again."))
     }
   }
 
@@ -81,19 +84,19 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
       setCollections((c) => c.filter((x) => x.id !== id))
       if (openId === id) setOpenId(null)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Delete failed.')
+      setError(formatApiError(err, "Couldn't delete the collection. Try again."))
     }
   }
 
   // ── Detail view ─────────────────────────────────────────────────────────────
   if (openId) {
     return (
-      <div className="glass flex min-h-0 flex-1 flex-col rounded-[16px]">
-        <div className="flex items-center gap-2 border-b border-white/8 px-5 py-4">
+      <Panel>
+        <PanelHeader>
           <button
             onClick={() => setOpenId(null)}
             aria-label="Back to collections"
-            className="grid size-7 place-items-center rounded-[8px] text-text-dim transition hover:bg-white/5 hover:text-text"
+            className="icon-btn size-7"
           >
             <ArrowLeftIcon size={16} />
           </button>
@@ -112,7 +115,7 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
           >
             <TrashIcon size={14} /> Delete pack
           </button>
-        </div>
+        </PanelHeader>
 
         {exporting && detail && (
           <ExportDialog
@@ -123,8 +126,12 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
             onClose={() => setExporting(false)}
           />
         )}
-        {error && <p className="px-5 pt-3 text-xs text-rose-300">{error}</p>}
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        {error && (
+          <PanelInset>
+            <ErrorBanner message={error} onDismiss={() => setError(null)} />
+          </PanelInset>
+        )}
+        <PanelBody>
           {!detail ? (
             <div className="grid place-items-center py-16 text-text-dim">
               <SpinnerGapIcon size={20} className="animate-spin" />
@@ -141,7 +148,7 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
                   className="group relative overflow-hidden rounded-[12px] ring-1 ring-white/10"
                   title={a.derivation ?? a.prompt ?? a.role ?? ''}
                 >
-                  <img src={a.url} alt="" className="aspect-square w-full object-cover" />
+                  <AssetImage src={a.url} alt="" className="aspect-square w-full object-cover" />
                   <button
                     onClick={() => removeItem(a.id)}
                     aria-label="Remove from pack"
@@ -153,28 +160,28 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
               ))}
             </div>
           )}
-        </div>
-      </div>
+        </PanelBody>
+      </Panel>
     )
   }
 
   // ── List view ───────────────────────────────────────────────────────────────
   return (
-    <div className="glass flex min-h-0 flex-1 flex-col rounded-[16px]">
-      <div className="flex items-center gap-2 border-b border-white/8 px-5 py-4">
-        <span className="grid size-7 place-items-center rounded-[8px] bg-accent/15 text-teal-bright">
+    <Panel>
+      <PanelHeader>
+        <PanelIcon>
           <StackIcon size={15} weight="fill" />
-        </span>
+        </PanelIcon>
         <p className="text-sm font-medium text-text">Collections</p>
         <span className="text-sm text-text-dim">· {collections.length}</span>
-      </div>
+      </PanelHeader>
 
       <form onSubmit={create} className="border-b border-white/8 p-4">
         <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-[12px] bg-surface-2/60 p-2">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="New pack name… (e.g. Hero walk cycle)"
+            placeholder="Collection name (e.g. Hero walk cycle)"
             className="flex-1 bg-transparent px-2 text-sm text-text outline-none placeholder:text-text-dim"
           />
           <button
@@ -186,13 +193,17 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
             Create
           </button>
         </div>
-        {error && <p className="mx-auto mt-2 max-w-2xl text-xs text-rose-300">{error}</p>}
+        {error && (
+          <p className="mx-auto mt-2 max-w-2xl">
+            <ErrorBanner message={error} onDismiss={() => setError(null)} />
+          </p>
+        )}
       </form>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+      <PanelBody>
         {collections.length === 0 ? (
           <p className="px-1 py-16 text-center text-sm text-text-dim">
-            No collections yet. Create a pack above.
+            No collections yet. Name one above to group assets for export.
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -200,20 +211,22 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
               <button
                 key={c.id}
                 onClick={() => setOpenId(c.id)}
-                className="group overflow-hidden rounded-[12px] text-left ring-1 ring-white/10 transition hover:ring-white/25"
+                className="group overflow-hidden rounded-[12px] text-left ring-1 ring-white/10 transition hover:ring-teal/40"
               >
-                <div className="aspect-[4/3] w-full bg-surface-2/60">
-                  {c.cover_asset_id && (
-                    <img
+                <div className="flex aspect-[4/3] w-full items-center justify-center bg-gradient-to-br from-indigo/12 via-surface-2/80 to-teal/10">
+                  {c.cover_asset_id ? (
+                    <AssetImage
                       src={`/api/assets/${c.cover_asset_id}/file`}
                       alt=""
                       className="h-full w-full object-cover"
                     />
+                  ) : (
+                    <StackIcon size={28} className="text-indigo-bright/35" weight="duotone" />
                   )}
                 </div>
                 <div className="px-2.5 py-2">
                   <p className="truncate text-sm text-text">{c.name}</p>
-                  <p className="text-[11px] text-text-dim">
+                  <p className={`text-[11px] ${c.item_count > 0 ? 'text-teal-bright' : 'text-text-dim'}`}>
                     {c.item_count} {c.item_count === 1 ? 'asset' : 'assets'}
                   </p>
                 </div>
@@ -221,7 +234,7 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </PanelBody>
+    </Panel>
   )
 }

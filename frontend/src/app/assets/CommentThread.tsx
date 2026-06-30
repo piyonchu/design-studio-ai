@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { PaperPlaneRightIcon, SpinnerGapIcon, TrashIcon, ChatCircleIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
-import { ApiError } from '../../lib/api'
+import { formatApiError } from '../../lib/api'
 import { useAuth } from '../../auth/AuthContext'
 
 /** Relative time, e.g. "just now", "4m", "2h", "3d", else a short date. */
@@ -45,7 +45,7 @@ export function CommentThread({
         setComments(cs)
         onCountChange?.(cs.length)
       })
-      .catch(() => alive && setError('Failed to load comments.'))
+      .catch((err) => alive && setError(formatApiError(err, "Couldn't load comments. Try again.")))
       .finally(() => alive && setLoading(false))
     return () => {
       alive = false
@@ -73,7 +73,7 @@ export function CommentThread({
       })
       setDraft('')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to post.')
+      setError(formatApiError(err, "Couldn't post your comment. Try again."))
     } finally {
       setBusy(false)
     }
@@ -88,7 +88,7 @@ export function CommentThread({
         return next
       })
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to delete.')
+      setError(formatApiError(err, "Couldn't delete that comment. Try again."))
     }
   }
 
@@ -102,9 +102,9 @@ export function CommentThread({
 
       <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto">
         {loading ? (
-          <p className="text-xs text-text-dim">Loading…</p>
+          <p className="text-xs text-text-dim">Loading comments…</p>
         ) : comments.length === 0 ? (
-          <p className="text-xs text-text-dim">No comments yet. Start the discussion below.</p>
+          <p className="text-xs text-text-dim">No comments yet. Add context for reviewers below.</p>
         ) : (
           comments.map((c) => (
             <div key={c.id} className="group">

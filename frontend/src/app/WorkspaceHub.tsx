@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { PlusIcon, FolderDashedIcon, SpinnerGapIcon } from '@phosphor-icons/react'
 import * as api from '../lib/api'
-import { ApiError } from '../lib/api'
+import { formatApiError } from '../lib/api'
 import { AppShell } from './AppShell'
 import { ProjectCard } from './ProjectCard'
-import { CreditChip } from './CreditChip'
 import { VERTICALS } from './verticals'
+import { ErrorBanner } from './ui/ErrorBanner'
 
 export function WorkspaceHub() {
   const [workspace, setWorkspace] = useState<api.Workspace | null>(null)
@@ -17,9 +17,12 @@ export function WorkspaceHub() {
   const [newName, setNewName] = useState('')
   const [newVertical, setNewVertical] = useState('game_2d')
   const [busy, setBusy] = useState(false)
+  const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
     let active = true
+    setLoading(true)
+    setError(null)
     ;(async () => {
       try {
         const ws = await api.listWorkspaces()
@@ -28,7 +31,7 @@ export function WorkspaceHub() {
         setWorkspace(first)
         if (first) setProjects(await api.listProjects(first.id))
       } catch (err) {
-        if (active) setError(err instanceof ApiError ? err.message : 'Failed to load.')
+        if (active) setError(formatApiError(err, "Couldn't load your workspace. Check your connection and retry."))
       } finally {
         if (active) setLoading(false)
       }
@@ -36,7 +39,7 @@ export function WorkspaceHub() {
     return () => {
       active = false
     }
-  }, [])
+  }, [reloadTick])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -53,7 +56,7 @@ export function WorkspaceHub() {
       setNewName('')
       setCreating(false)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create project.')
+      setError(formatApiError(err, "Couldn't create the project. Try a different name."))
     } finally {
       setBusy(false)
     }
@@ -66,16 +69,16 @@ export function WorkspaceHub() {
       await api.deleteProject(id)
     } catch (err) {
       setProjects(prev) // roll back on failure
-      setError(err instanceof ApiError ? err.message : 'Failed to delete project.')
+      setError(formatApiError(err, "Couldn't move the project to trash. Try again."))
     }
   }
 
   return (
     <AppShell search={search} onSearch={setSearch}>
       <div className="mx-auto max-w-[1400px]">
-        <div className="mb-6 flex items-end justify-between gap-4">
+        <div className="mb-8 flex items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-text">
+            <h1 className="text-balance text-2xl font-semibold tracking-tight text-text">
               {workspace?.name ?? 'Workspace'}
             </h1>
             <p className="mt-1 text-sm text-text-dim">
@@ -83,7 +86,6 @@ export function WorkspaceHub() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <CreditChip />
             <button
               onClick={() => setCreating((v) => !v)}
               className="inline-flex items-center gap-2 rounded-[10px] bg-teal px-4 py-2.5 text-sm font-semibold text-bg transition active:translate-y-px"
@@ -100,6 +102,7 @@ export function WorkspaceHub() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Project name"
+              maxLength={120}
               className="flex-1 rounded-[8px] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-2 focus:ring-teal/30"
             />
             <select
@@ -126,33 +129,36 @@ export function WorkspaceHub() {
         )}
 
         {error && (
-          <p className="mb-4 rounded-[10px] border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
-            {error}
-          </p>
+          <ErrorBanner
+            message={error}
+            onRetry={loading ? undefined : () => setReloadTick((n) => n + 1)}
+            onDismiss={() => setError(null)}
+            className="mb-4"
+          />
         )}
 
         {loading ? (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="glass h-56 animate-pulse rounded-[16px]" />
+              <div key={i} className="glass h-56 animate-pulse rounded-[var(--radius-panel)]" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="glass mt-4 grid place-items-center rounded-[16px] px-6 py-20 text-center">
+          <div className="glass mt-4 grid place-items-center rounded-[var(--radius-panel)] px-6 py-20 text-center">
             <span className="mb-4 grid size-14 place-items-center rounded-full bg-white/5 text-text-dim">
               <FolderDashedIcon size={28} />
             </span>
             <p className="text-text">
-              {search ? 'No projects match your search.' : 'No projects yet.'}
+              {search ? 'No projects match that search. Try a different name.' : 'No projects yet.'}
             </p>
             {!search && (
               <p className="mt-1 text-sm text-text-dim">
-                Create your first project to start designing.
+                Create a project to start building your asset library.
               </p>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filtered.map((p) => (
               <ProjectCard key={p.id} project={p} onDelete={trashProject} />
             ))}

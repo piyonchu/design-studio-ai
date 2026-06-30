@@ -2,8 +2,16 @@ import { useEffect, useState } from 'react'
 import { ShieldCheckIcon, SpinnerGapIcon, CrownIcon } from '@phosphor-icons/react'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
+import { Panel, PanelBody, PanelHeader, PanelIcon } from './ui/Panel'
+import { ErrorBanner } from './ui/ErrorBanner'
 
 const ROLES: api.ProjectRole[] = ['viewer', 'editor', 'reviewer', 'owner']
+const ROLE_CHIP: Record<api.ProjectRole, string> = {
+  owner: 'bg-warning/15 text-warning',
+  reviewer: 'bg-teal/15 text-teal-bright',
+  editor: 'bg-indigo/15 text-indigo-bright',
+  viewer: 'bg-white/8 text-text-dim',
+}
 const ROLE_HINT: Record<api.ProjectRole, string> = {
   viewer: 'Can view assets',
   editor: 'Can generate, edit, submit for review',
@@ -52,19 +60,19 @@ export function AccessView({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px]">
-      <div className="flex items-center gap-2 border-b border-white/8 px-5 py-4">
-        <span className="grid size-7 place-items-center rounded-[8px] bg-indigo-400/15 text-indigo-300">
+    <Panel>
+      <PanelHeader>
+        <PanelIcon className="bg-indigo/15 text-indigo-bright">
           <ShieldCheckIcon size={15} weight="fill" />
-        </span>
+        </PanelIcon>
         <p className="text-sm font-medium text-text">Project Access</p>
         <span className="text-sm text-text-dim">· {members.length}</span>
         {!canManage && !loading && (
           <span className="ml-auto text-xs text-text-dim">View only — ask a project owner to change roles</span>
         )}
-      </div>
+      </PanelHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <PanelBody>
         {loading ? (
           <p className="py-12 text-center text-sm text-text-dim">Loading…</p>
         ) : (
@@ -73,7 +81,7 @@ export function AccessView({ projectId }: { projectId: string }) {
               Roles layer on workspace membership. A <span className="text-teal-bright">reviewer</span> may approve
               assets; an editor can submit for review but not self-approve.
             </p>
-            {error && <p className="mb-3 text-xs text-rose-300">{error}</p>}
+            {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-3" />}
             <ul className="space-y-1.5">
               {members.map((m) => {
                 const isWsOwner = m.workspace_role === 'owner'
@@ -89,13 +97,13 @@ export function AccessView({ projectId }: { projectId: string }) {
                       <p className="truncate text-sm text-text">{m.display_name || m.email}</p>
                       <p className="truncate text-[11px] text-text-dim">
                         {m.email} · workspace {m.workspace_role}
-                        {m.overridden && <span className="text-indigo-300"> · override</span>}
+                        {m.overridden && <span className="text-indigo-bright"> · override</span>}
                       </p>
                     </div>
 
                     {isWsOwner ? (
                       <span
-                        className="inline-flex items-center gap-1 rounded-[8px] bg-amber-400/15 px-2.5 py-1.5 text-xs text-amber-200"
+                        className="inline-flex items-center gap-1 rounded-[8px] bg-warning/15 px-2.5 py-1.5 text-xs text-warning"
                         title="Workspace owners always have full project access"
                       >
                         <CrownIcon size={13} weight="fill" />
@@ -117,7 +125,7 @@ export function AccessView({ projectId }: { projectId: string }) {
                         ))}
                       </select>
                     ) : (
-                      <span className="rounded-[8px] bg-white/8 px-2.5 py-1.5 text-xs text-text-dim">
+                      <span className={`rounded-[8px] px-2.5 py-1.5 text-xs font-medium ${ROLE_CHIP[m.project_role]}`}>
                         {m.project_role}
                       </span>
                     )}
@@ -127,7 +135,7 @@ export function AccessView({ projectId }: { projectId: string }) {
             </ul>
           </>
         )}
-      </div>
-    </div>
+      </PanelBody>
+    </Panel>
   )
 }

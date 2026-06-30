@@ -3,6 +3,8 @@ import { PaletteIcon, SpinnerGapIcon, CheckIcon, ClockCounterClockwiseIcon } fro
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { verticalConfig } from '../verticals'
+import { Panel, PanelBody, PanelFooter, PanelHeader, PanelIcon, ContentWell } from '../ui/Panel'
+import { ErrorBanner } from '../ui/ErrorBanner'
 
 type CanonData = { style?: Record<string, string>; negative?: string[] }
 
@@ -65,17 +67,18 @@ export function CanonView({ projectId, vertical }: { projectId: string; vertical
   }
 
   return (
-    <form onSubmit={save} className="glass flex min-h-0 flex-1 flex-col rounded-[16px]">
-      <div className="flex items-center gap-2 border-b border-white/8 px-5 py-4">
-        <span className="grid size-7 place-items-center rounded-[8px] bg-accent/15 text-teal-bright">
+    <Panel className="min-h-0 min-w-0 flex-1">
+      <form onSubmit={save} className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <PanelHeader>
+        <PanelIcon>
           <PaletteIcon size={15} weight="fill" />
-        </span>
+        </PanelIcon>
         <p className="text-sm font-medium text-text">Canon</p>
         {version != null && <span className="text-sm text-text-dim">· v{version}</span>}
-      </div>
+      </PanelHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        <div className="mx-auto grid max-w-2xl gap-4">
+      <PanelBody>
+        <ContentWell className="grid gap-5">
           {STYLE_FIELDS.map(([key, label, placeholder]) => (
             <label key={key} className="grid gap-1.5">
               <span className="text-xs font-medium text-text-dim">{label}</span>
@@ -83,7 +86,7 @@ export function CanonView({ projectId, vertical }: { projectId: string; vertical
                 value={style[key] ?? ''}
                 onChange={(e) => setStyle((s) => ({ ...s, [key]: e.target.value }))}
                 placeholder={placeholder}
-                className="rounded-[10px] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
+                className="rounded-[var(--radius-control)] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus-visible:ring-2 focus-visible:ring-teal/40"
               />
             </label>
           ))}
@@ -95,7 +98,7 @@ export function CanonView({ projectId, vertical }: { projectId: string; vertical
               onChange={(e) => setNegative(e.target.value)}
               placeholder={'no photorealism\nno text or watermark'}
               rows={4}
-              className="resize-y rounded-[10px] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
+              className="resize-y rounded-[var(--radius-control)] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus-visible:ring-2 focus-visible:ring-teal/40"
             />
           </label>
 
@@ -107,7 +110,12 @@ export function CanonView({ projectId, vertical }: { projectId: string; vertical
               </p>
               <ol className="space-y-1.5">
                 {history.map((c) => (
-                  <li key={c.id} className="flex items-start gap-2.5 rounded-[10px] bg-surface-2/40 px-3 py-2">
+                  <li
+                    key={c.id}
+                    className={`flex items-start gap-2.5 rounded-[10px] px-3 py-2 ${
+                      c.version === version ? 'bg-teal/8 ring-1 ring-teal/30' : 'bg-surface-2/40'
+                    }`}
+                  >
                     <span
                       className={`mt-px shrink-0 rounded-[6px] px-1.5 py-0.5 text-[10px] font-semibold ${
                         c.version === version ? 'bg-teal/20 text-teal-bright' : 'bg-white/8 text-text-dim'
@@ -126,25 +134,26 @@ export function CanonView({ projectId, vertical }: { projectId: string; vertical
               </ol>
             </div>
           )}
-        </div>
-      </div>
+        </ContentWell>
+      </PanelBody>
 
-      <div className="flex items-center gap-3 border-t border-white/8 px-5 py-3">
-        <button
-          type="submit"
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-[8px] bg-teal px-3.5 py-2 text-sm font-semibold text-bg transition active:translate-y-px disabled:opacity-50"
-        >
-          {busy ? (
-            <SpinnerGapIcon size={14} className="animate-spin" />
-          ) : (
-            <CheckIcon size={14} weight="bold" />
-          )}
-          {version == null ? 'Save canon' : 'Save new version'}
-        </button>
-        {saved && <span className="text-xs text-teal-bright">Saved · v{version}</span>}
-        {error && <span className="text-xs text-rose-300">{error}</span>}
-      </div>
-    </form>
+        <PanelFooter>
+          <button
+            type="submit"
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-[8px] bg-teal px-3.5 py-2 text-sm font-semibold text-bg transition active:translate-y-px disabled:opacity-50"
+          >
+            {busy ? (
+              <SpinnerGapIcon size={14} className="animate-spin" />
+            ) : (
+              <CheckIcon size={14} weight="bold" />
+            )}
+            {version == null ? 'Save canon' : 'Save new version'}
+          </button>
+          {saved && <span className="text-xs text-teal-bright">Saved · v{version}</span>}
+          {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+        </PanelFooter>
+      </form>
+    </Panel>
   )
 }

@@ -23,12 +23,18 @@ export function CreditChip() {
 
   // Color by how much of the budget is left (when a limit is known).
   const frac = usage.limit ? usage.remaining / usage.limit : 1
-  const tone = frac < 0.1 ? 'text-rose-300' : frac < 0.25 ? 'text-amber-300' : 'text-text-dim'
+  const shell =
+    frac < 0.1
+      ? 'border-danger/35 bg-danger/10'
+      : frac < 0.25
+        ? 'border-warning/35 bg-warning/10'
+        : 'border-teal/25 bg-teal/8'
+  const amountTone = frac < 0.1 ? 'text-danger' : frac < 0.25 ? 'text-warning' : 'text-teal-bright'
   const live = usage.source !== 'mock'
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-[8px] border border-white/8 bg-surface-2/50 px-2.5 py-1.5 text-xs"
+      className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 text-xs ${shell}`}
       title={
         live
           ? `OpenRouter key: $${usage.remaining.toFixed(2)} of $${(usage.limit ?? 0).toFixed(0)} left · $${usage.usage.toFixed(2)} used${usage.source === 'stale' ? ' (cached)' : ''}`
@@ -36,7 +42,7 @@ export function CreditChip() {
       }
     >
       <LightningIcon size={13} weight="fill" className={live ? 'text-teal-bright' : 'text-text-dim'} />
-      <span className={tone}>
+      <span className={amountTone}>
         ${usage.remaining.toFixed(2)}
         {usage.limit ? <span className="text-text-dim">/${usage.limit.toFixed(0)}</span> : null}
       </span>
