@@ -114,6 +114,7 @@ export function FolderTree({
             if (e.key === 'Escape') onCancel()
           }}
           placeholder="Folder name…"
+          aria-label="Folder name"
           className="min-w-0 flex-1 rounded-[6px] bg-surface/80 px-2 py-1 text-xs text-text outline-none ring-1 ring-teal/40"
         />
         <button onClick={onCommit} aria-label="Save" className="text-teal-bright hover:text-teal">

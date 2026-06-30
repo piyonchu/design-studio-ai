@@ -10,6 +10,7 @@ import {
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { enginesFor, type Engine } from '../verticals'
+import { Dialog } from '../ui/Dialog'
 
 const ENGINE_LABEL: Record<Engine, string> = { godot: 'Godot 4', unity: 'Unity' }
 const ENGINE_NOTE: Record<Engine, string> = {
@@ -84,14 +85,17 @@ export function ExportDialog({
   }
 
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/50" onClick={onClose} aria-hidden />
-      <div className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-[520px] max-w-[94vw] -translate-x-1/2 -translate-y-1/2 flex-col rounded-[16px] border border-white/10 bg-surface-2 shadow-2xl">
+    <Dialog
+      onClose={onClose}
+      panelClassName="flex max-h-[80vh] w-[520px] max-w-[94vw] flex-col rounded-[16px] border border-white/10 bg-surface-2 shadow-2xl"
+    >
+      {({ titleId }) => (
+      <>
         <header className="flex items-center gap-2 border-b border-white/8 px-4 py-3">
           <span className="grid size-7 place-items-center rounded-[8px] bg-accent/15 text-teal-bright">
             <PackageIcon size={15} weight="fill" />
           </span>
-          <p className="text-sm font-medium text-text">Export · {title}</p>
+          <h2 id={titleId} className="text-sm font-medium text-text">Export · {title}</h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -204,7 +208,8 @@ export function ExportDialog({
             </footer>
           </>
         )}
-      </div>
-    </>
+      </>
+      )}
+    </Dialog>
   )
 }

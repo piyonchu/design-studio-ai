@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon, StarIcon } from '@phosphor-icons/react'
+import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon, StarIcon, SparkleIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { CommentThread } from './CommentThread'
 import { VersionHistory } from './VersionHistory'
 import { EditTools } from './EditTools'
+import { Dialog } from '../ui/Dialog'
 
 /**
  * Asset inspector — a slide-over for one asset: preview, editable role/tags,
@@ -17,12 +18,16 @@ export function AssetInspector({
   onNavigate,
   onChanged,
   onDeleted,
+  onDeriveFrom,
 }: {
   assetId: string | null
   onClose: () => void
   onNavigate: (id: string) => void
   onChanged: (asset: api.Asset) => void
   onDeleted: (id: string) => void
+  /** Make this asset the board's derivation base (an explicit, discoverable
+   *  path to derive, vs. the board's otherwise-hidden tile-click). */
+  onDeriveFrom?: (id: string) => void
 }) {
   const [detail, setDetail] = useState<api.AssetDetail | null>(null)
   const [name, setName] = useState('')
@@ -152,11 +157,15 @@ export function AssetInspector({
   }
 
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-hidden />
-      <aside className="fixed inset-y-0 right-0 z-50 flex w-[380px] max-w-[92vw] flex-col border-l border-white/10 bg-surface-2 shadow-2xl">
+    <Dialog
+      variant="right"
+      onClose={onClose}
+      panelClassName="flex h-full w-[380px] max-w-[92vw] flex-col border-l border-white/10 bg-surface-2 shadow-2xl"
+    >
+      {({ titleId }) => (
+      <>
         <header className="flex items-center gap-2 border-b border-white/8 px-4 py-3">
-          <p className="text-sm font-medium text-text">Inspector</p>
+          <h2 id={titleId} className="text-sm font-medium text-text">Inspector</h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -197,6 +206,16 @@ export function AssetInspector({
                 </span>
               )}
             </div>
+
+            {detail.kind !== 'audio' && onDeriveFrom && (
+              <button
+                onClick={() => onDeriveFrom(detail.id)}
+                className="mb-3 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-teal px-3 py-2 text-sm font-semibold text-bg transition active:translate-y-px"
+              >
+                <SparkleIcon size={14} weight="fill" />
+                Derive from this
+              </button>
+            )}
 
             <button
               onClick={toggleExemplar}
@@ -286,6 +305,7 @@ export function AssetInspector({
                     setSelectedCol(e.target.value)
                     setAdded(null)
                   }}
+                  aria-label="Add to collection"
                   className="rounded-[10px] bg-surface/60 px-2.5 py-2 text-sm text-text outline-none focus:ring-1 focus:ring-teal/40"
                 >
                   <option value="">Add to collection…</option>
@@ -401,7 +421,8 @@ export function AssetInspector({
             </div>
           </div>
         )}
-      </aside>
-    </>
+      </>
+      )}
+    </Dialog>
   )
 }

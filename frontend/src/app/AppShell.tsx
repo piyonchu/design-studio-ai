@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   HouseIcon,
@@ -11,6 +11,7 @@ import {
 } from '@phosphor-icons/react'
 import * as api from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
+import { CreditChip } from './CreditChip'
 
 const NAV = [
   { icon: HouseIcon, label: 'Home', to: '/' },
@@ -32,6 +33,23 @@ export function AppShell({
   const [menuOpen, setMenuOpen] = useState(false)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Dismiss the account menu on Escape or an outside click — keyboard users
+  // were previously stranded with no way to close it but re-clicking the avatar.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false)
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [menuOpen])
   const label = user ? api.userName(user) : ''
   const initial = label[0]?.toUpperCase() ?? '?'
 
@@ -106,17 +124,21 @@ export function AppShell({
                 value={search ?? ''}
                 onChange={(e) => onSearch(e.target.value)}
                 placeholder="Search projects, flows, assets…"
+                aria-label="Search projects, flows, and assets"
                 className="glass w-full rounded-full py-2.5 pl-11 pr-4 text-sm text-text outline-none transition placeholder:text-text-dim focus:ring-2 focus:ring-indigo/40"
               />
             </div>
           ) : (
             <div className="flex-1" />
           )}
-          <div className="relative">
+          <CreditChip />
+          <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              className="grid size-9 place-items-center rounded-full bg-indigo/25 text-sm font-semibold text-indigo-bright ring-1 ring-white/10"
+              className="grid size-9 place-items-center rounded-full bg-indigo/25 text-sm font-semibold text-indigo-bright ring-1 ring-white/10 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/50"
               aria-label="Account menu"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
             >
               {initial}
             </button>
@@ -130,6 +152,7 @@ export function AppShell({
                     onChange={(e) => setName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && saveName()}
                     placeholder="Set display name…"
+                    aria-label="Set display name"
                     className="min-w-0 flex-1 rounded-[8px] bg-surface-2/60 px-2.5 py-1.5 text-xs text-text outline-none placeholder:text-text-dim focus:ring-2 focus:ring-teal/30"
                   />
                   <button

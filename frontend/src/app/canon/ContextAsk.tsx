@@ -73,12 +73,13 @@ export function ContextAsk({ projectId }: { projectId: string }) {
       </div>
 
       <form onSubmit={ask} className="border-b border-white/8 p-3">
-        <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-[12px] bg-surface-2/60 p-2">
+        <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-[12px] bg-surface-2/60 p-2 transition focus-within:ring-1 focus-within:ring-teal/40">
           <MagnifyingGlassIcon size={15} className="ml-1 text-text-dim" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Why was this made? What are the torch assets for?…"
+            aria-label="Ask about this project's canon"
             className="flex-1 bg-transparent px-1 text-sm text-text outline-none placeholder:text-text-dim"
           />
           <button

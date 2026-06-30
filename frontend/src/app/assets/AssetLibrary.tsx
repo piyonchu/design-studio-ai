@@ -17,7 +17,9 @@ import {
   BookmarkSimpleIcon,
   MinusIcon,
   PlusIcon,
+  CircleDashedIcon,
 } from '@phosphor-icons/react'
+import type { Icon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { AssetInspector } from './AssetInspector'
@@ -25,6 +27,7 @@ import { ExportDialog } from '../export/ExportDialog'
 import { JobsBanner } from './JobsBanner'
 import { FolderTree } from './FolderTree'
 import { verticalConfig } from '../verticals'
+import { ConfirmDialog } from '../ui/Dialog'
 
 const STATUSES: api.AssetStatus[] = ['candidate', 'approved', 'needs_review', 'rejected']
 
@@ -41,6 +44,15 @@ const STATUS_DOT: Record<api.AssetStatus, string> = {
   approved: 'bg-teal',
   needs_review: 'bg-rose-400',
   rejected: 'bg-white/30',
+}
+// Status as a labelled chip on every tile — colour PLUS icon + word, so review
+// state survives for colour-blind/greyscale users (DESIGN.md "Status Must
+// Survive Rule"). One chip, top-right, hides on hover to reveal the inspect btn.
+const STATUS_CHIP: Record<api.AssetStatus, { label: string; cls: string; Icon: Icon; pulse?: boolean }> = {
+  candidate: { label: 'Candidate', cls: 'bg-amber-400/90 text-bg', Icon: CircleDashedIcon },
+  approved: { label: 'Approved', cls: 'bg-teal/90 text-bg', Icon: CheckIcon },
+  needs_review: { label: 'Review', cls: 'bg-rose-500/90 text-white', Icon: FlagIcon, pulse: true },
+  rejected: { label: 'Rejected', cls: 'bg-black/70 text-text-muted', Icon: XIcon },
 }
 
 /**
@@ -96,6 +108,15 @@ export function AssetLibrary({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchCol, setBatchCol] = useState('')
   const [exportIds, setExportIds] = useState<string[] | null>(null)
+  // A confirm step for the costly / canon-altering bulk actions (derive-all,
+  // batch-approve) — they used to fire many irreversible ops on one click.
+  const [confirm, setConfirm] = useState<{
+    title: string
+    body: ReactNode
+    confirmLabel: string
+    tone?: 'primary' | 'danger'
+    run: () => void
+  } | null>(null)
 
   const [recipes, setRecipes] = useState<api.Recipe[]>([])
   // Keyset pagination + whole-project facet counts (so the rail stays accurate
@@ -394,18 +415,23 @@ export function AssetLibrary({
     if (!baseId || busy) return
     setBusy(true)
     setError(null)
-    try {
-      for (const p of PRESETS) {
-        try {
-          const created = await api.deriveAssets(projectId, baseId, p.text, 1)
-          setAssets((a) => [...created, ...a])
-        } catch (err) {
-          genError(err)
-        }
+    // Collect per-preset outcomes so a mid-loop failure reports a partial
+    // summary instead of each error clobbering the last.
+    let ok = 0
+    const failed: string[] = []
+    for (const p of PRESETS) {
+      try {
+        const created = await api.deriveAssets(projectId, baseId, p.text, 1)
+        setAssets((a) => [...created, ...a])
+        ok++
+      } catch {
+        failed.push(p.label)
       }
-      bumpFacets()
-    } finally {
-      setBusy(false)
+    }
+    bumpFacets()
+    setBusy(false)
+    if (failed.length) {
+      setError(`Derived ${ok} of ${PRESETS.length}. Couldn't generate: ${failed.join(', ')}.`)
     }
   }
 
@@ -528,12 +554,13 @@ export function AssetLibrary({
       {/* Filter rail */}
       <aside className="flex w-56 shrink-0 flex-col border-r border-white/8">
         <div className="border-b border-white/8 p-3">
-          <div className="flex items-center gap-2 rounded-[10px] bg-surface-2/60 px-2.5 py-2">
+          <div className="flex items-center gap-2 rounded-[10px] bg-surface-2/60 px-2.5 py-2 transition focus-within:ring-1 focus-within:ring-teal/40">
             <MagnifyingGlassIcon size={14} className="text-text-dim" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search assets…"
+              aria-label="Search assets"
               className="w-full bg-transparent text-xs text-text outline-none placeholder:text-text-dim"
             />
           </div>
@@ -669,7 +696,20 @@ export function AssetLibrary({
           <div className="flex flex-wrap items-center gap-2 border-b border-white/8 px-5 py-3">
             <span className="text-sm text-text">{selected.size} selected</span>
             <button
-              onClick={() => batchStatus('approved')}
+              onClick={() =>
+                setConfirm({
+                  title: `Approve ${selected.size} ${selected.size === 1 ? 'asset' : 'assets'}?`,
+                  body: (
+                    <>
+                      Approving promotes {selected.size} {selected.size === 1 ? 'asset' : 'assets'} into
+                      the project canon — approved work conditions future generations. You can still
+                      re-review each one afterward.
+                    </>
+                  ),
+                  confirmLabel: `Approve ${selected.size}`,
+                  run: () => batchStatus('approved'),
+                })
+              }
               disabled={!selected.size || busy || !canApprove}
               title={canApprove ? undefined : 'Only a reviewer or owner can approve'}
               className="inline-flex items-center gap-1.5 rounded-[8px] bg-teal px-3 py-1.5 text-sm font-semibold text-bg transition active:translate-y-px disabled:opacity-40"
@@ -690,6 +730,7 @@ export function AssetLibrary({
                 <select
                   value={batchCol}
                   onChange={(e) => setBatchCol(e.target.value)}
+                  aria-label="Add selected assets to collection"
                   className="rounded-[8px] bg-surface-2/60 px-2.5 py-1.5 text-sm text-text outline-none focus:ring-1 focus:ring-teal/40"
                 >
                   <option value="">Add to collection…</option>
@@ -729,7 +770,20 @@ export function AssetLibrary({
               <div className="mb-2 flex items-center gap-2 text-xs text-text-dim">
                 <span>Deriving from selected base — pick a preset or write an instruction</span>
                 <button
-                  onClick={deriveAll}
+                  onClick={() =>
+                    setConfirm({
+                      title: `Derive a full set of ${PRESETS.length}?`,
+                      body: (
+                        <>
+                          This generates {PRESETS.length} new variants from the selected base in one go
+                          and draws from your shared OpenRouter credit. Each lands as a candidate for
+                          review.
+                        </>
+                      ),
+                      confirmLabel: `Derive ${PRESETS.length}`,
+                      run: deriveAll,
+                    })
+                  }
                   disabled={busy}
                   title="Derive one of every preset — a whole consistent set"
                   className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] border border-teal/30 bg-teal/10 px-2.5 py-1 text-teal-bright transition hover:bg-teal/15 disabled:opacity-50"
@@ -774,11 +828,12 @@ export function AssetLibrary({
                   ))}
                 </div>
               )}
-              <div className="flex items-center gap-2 rounded-[12px] bg-surface-2/60 p-2">
+              <div className="flex items-center gap-2 rounded-[12px] bg-surface-2/60 p-2 transition focus-within:ring-1 focus-within:ring-teal/40">
                 <input
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
                   placeholder="Derivation instruction…"
+                  aria-label="Derivation instruction"
                   className="flex-1 bg-transparent px-2 text-sm text-text outline-none placeholder:text-text-dim"
                 />
                 <button
@@ -803,7 +858,7 @@ export function AssetLibrary({
           </div>
         ) : showGen ? (
           <form onSubmit={generate} className="border-b border-white/8 p-4">
-            <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-[12px] bg-surface-2/60 p-2">
+            <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-[12px] bg-surface-2/60 p-2 transition focus-within:ring-1 focus-within:ring-teal/40">
               <div className="flex shrink-0 items-center rounded-[8px] bg-surface/60 p-0.5">
                 {(['image', 'audio'] as const).map((m) => (
                   <button
@@ -827,6 +882,7 @@ export function AssetLibrary({
                     ? 'Describe a sound to generate… (e.g. sword clang, ambient loop)'
                     : 'Describe an asset to generate… (or click a tile to derive)'
                 }
+                aria-label={genMode === 'audio' ? 'Describe a sound to generate' : 'Describe an asset to generate'}
                 className="flex-1 bg-transparent px-2 text-sm text-text outline-none placeholder:text-text-dim"
               />
               <div
@@ -917,13 +973,31 @@ export function AssetLibrary({
                 return (
                   <figure
                     key={a.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSel || isBase}
+                    aria-label={`${api.displayName(a)} — ${STATUS_CHIP[a.status].label}. ${
+                      selecting
+                        ? isSel
+                          ? 'Selected'
+                          : 'Select'
+                        : isBase
+                          ? 'Derivation base'
+                          : 'Set as derivation base'
+                    }`}
                     onClick={() => onTileClick(a)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onTileClick(a)
+                      }
+                    }}
                     draggable={!selecting}
                     onDragStart={(e) => {
                       e.dataTransfer.setData('text/asset-id', a.id)
                       e.dataTransfer.effectAllowed = 'move'
                     }}
-                    className={`group relative cursor-pointer overflow-hidden rounded-[12px] transition ${ring}`}
+                    className={`group relative cursor-pointer overflow-hidden rounded-[12px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${ring}`}
                     title={a.derivation ?? a.prompt ?? a.role ?? ''}
                   >
                     {a.kind === 'audio' ? (
@@ -966,17 +1040,21 @@ export function AssetLibrary({
                       </span>
                     )}
 
-                    {/* needs_review pulsing flag */}
-                    {a.status === 'needs_review' && (
-                      <span className="absolute right-1.5 top-1.5 grid size-6 place-items-center rounded-[6px] bg-rose-500/80 text-white">
-                        <FlagIcon size={13} weight="fill" className="animate-pulse" />
-                      </span>
-                    )}
-                    {a.status !== 'needs_review' && a.status !== 'candidate' && (
-                      <span className="absolute right-1.5 top-1.5 rounded-[6px] bg-teal/80 px-1.5 py-0.5 text-[10px] font-medium text-bg transition group-hover:opacity-0">
-                        {a.status}
-                      </span>
-                    )}
+                    {/* Status chip (colour + icon + word). Hides on hover/focus
+                        when inspectable, so the inspect button can take its spot. */}
+                    {(() => {
+                      const c = STATUS_CHIP[a.status]
+                      return (
+                        <span
+                          className={`pointer-events-none absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-[6px] px-1.5 py-0.5 text-[10px] font-semibold ${c.cls} ${
+                            !selecting ? 'transition group-hover:opacity-0 group-focus-within:opacity-0' : ''
+                          }`}
+                        >
+                          <c.Icon size={11} weight="fill" className={c.pulse ? 'animate-pulse' : ''} />
+                          {c.label}
+                        </span>
+                      )
+                    })()}
 
                     {!selecting && (
                       <button
@@ -984,15 +1062,15 @@ export function AssetLibrary({
                           e.stopPropagation()
                           setInspectId(a.id)
                         }}
-                        aria-label="Inspect"
-                        className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-[6px] bg-black/55 text-white/90 opacity-0 backdrop-blur transition group-hover:opacity-100"
+                        aria-label={`Inspect ${api.displayName(a)}`}
+                        className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-[6px] bg-black/55 text-white/90 opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                       >
                         <MagnifyingGlassIcon size={13} />
                       </button>
                     )}
 
                     {!selecting && a.status === 'candidate' && (
-                      <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-black/45 p-1.5 opacity-0 backdrop-blur transition group-hover:opacity-100">
+                      <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-black/45 p-1.5 opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-within:opacity-100">
                         {canApprove && (
                           <button
                             onClick={(e) => {
@@ -1057,6 +1135,11 @@ export function AssetLibrary({
         assetId={inspectId}
         onClose={() => setInspectId(null)}
         onNavigate={setInspectId}
+        onDeriveFrom={(id) => {
+          setSelecting(false)
+          setBaseId(id)
+          setInspectId(null)
+        }}
         onChanged={(updated) => {
           setAssets((a) => a.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))
           bumpFacets()
@@ -1075,6 +1158,21 @@ export function AssetLibrary({
           title={`${exportIds.length} selected`}
           vertical={vertical}
           onClose={() => setExportIds(null)}
+        />
+      )}
+
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.title}
+          body={confirm.body}
+          confirmLabel={confirm.confirmLabel}
+          tone={confirm.tone}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            const run = confirm.run
+            setConfirm(null)
+            run()
+          }}
         />
       )}
     </div>

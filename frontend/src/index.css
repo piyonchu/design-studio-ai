@@ -10,11 +10,23 @@
   --color-border: #242938;
   --color-text: #e7e9ee;
   --color-text-muted: #9aa1b0;
-  --color-text-dim: #6b7280;
+  /* Dimmest text tier — raised from #6b7280 (3.6:1) to clear WCAG AA 4.5:1 on
+     every surface for the small captions/counts/helper text that use it. */
+  --color-text-dim: #828a9b;
   --color-teal: #2dd4bf;
   --color-teal-bright: #5eead4;
   --color-indigo: #6366f1;
   --color-indigo-bright: #818cf8;
+
+  /* The primary signal alias — section-header icon chips tint with bg-accent. */
+  --color-accent: #2dd4bf;
+
+  /* Semantic status ramp. Status must pair with icon/shape (see DESIGN.md), but
+     these give the obsidian system one owned source for danger/warning/success. */
+  --color-danger: #fb7185;
+  --color-warning: #fbbf24;
+  --color-success: #2dd4bf;
+  --color-info: #818cf8;
 
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 

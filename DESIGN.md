@@ -8,7 +8,7 @@ colors:
   border: "#242938"
   text: "#e7e9ee"
   text-muted: "#9aa1b0"
-  text-dim: "#6b7280"
+  text-dim: "#828a9b"
   signal-teal: "#2dd4bf"
   signal-teal-bright: "#5eead4"
   quiet-indigo: "#6366f1"
