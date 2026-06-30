@@ -86,6 +86,25 @@ No model. Each edit creates a **new version** (A2), so it's non-destructive.
 - **Real provider (deferred, decision #3)**: fal.ai (`fast-sdxl`/inpaint) or Replicate SD-inpaint — new key + ~$0.01–0.05/edit. Flip `EDIT_MOCK=false`.
 - **Why:** "tweak without re-rolling the whole image" is the single feature that most separates a tool from a prompt box.
 
+#### B3. Manual paint editor — hand edits, no model  *(M, FREE, no provider)*
+A by-hand raster editor that sits **alongside** B1 (whole-image ops) and B2 (AI
+inpaint) — the missing "touch up this pixel myself" tool. All client-side; the
+server just stores the painted bytes as a new version.
+- **Tools (MVP)**: brush + eraser (paint to transparent), **paint bucket** (flood
+  fill with a tolerance), **eyedropper** (pick a colour from the image), undo/redo.
+- **Brush**: pixel-crisp by default (nearest-neighbour, no anti-alias — matches
+  16-bit game art) with a **smooth** toggle for the illustration/manhwa verticals.
+- **UX**: a **"Paint"** button in the inspector opens a `<canvas>` dialog (mirrors
+  `InpaintDialog`); edit at the asset's native resolution; **Save → a new version**
+  ("Hand-painted"), non-destructive (A2).
+- **Backend seam**: a generic **`POST /assets/:id/versions`** that accepts raw
+  image bytes and records them as a new version (`storage.put` + `record_version`).
+  Reusable by any client-rendered edit. (B1's `/edit` takes a named op; B2's
+  `/inpaint` renders server-side — neither accepts arbitrary client bytes.)
+- **Why:** designers want to nudge a few pixels (dot an eye, clean an edge, re-fill
+  a flat) without a model and without re-rolling — free, instant, versioned.
+- **Defer to v2**: layers, zoom/pan, blend modes, custom brush shapes.
+
 ---
 
 ### Phase C — Permissions: per-project roles + reviewer gate  *(M, no spend)*
@@ -137,8 +156,8 @@ than anything else and directly answer the senior.
 
 ## 8. Provider cost model + optimization (B2 real / D2 / D3)
 
-Status: A1, A2, **A3**, B1, C, B2 (mock), D1, and the **embedding QA gate** are
-**shipped & merged**. Everything below
+Status: A1, A2, **A3**, B1, **B3**, C, B2 (mock), D1, and the **embedding QA gate**
+are **shipped & merged**. Everything below
 incurs real spend, so it stays gated until a provider + key + budget is approved.
 Prices are pay-per-use, ~mid-2026; **verify live before wiring** (links at end).
 
