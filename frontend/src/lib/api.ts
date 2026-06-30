@@ -202,8 +202,12 @@ export interface Asset {
   exemplar: boolean // approved style anchor — conditions future generation
   folder_id: string | null // home folder in the project tree; null = root
   current_version_id: string | null // head version pointer (A2)
+  style_fit: number | null // QA gate: visual fit vs approved assets (0..1); null = unscored
   created_at: string
 }
+
+/** Style-fit below this flags an asset as off-style (matches the backend default). */
+export const STYLE_FIT_THRESHOLD = 0.5
 
 /** An asset plus its lineage — the base it came from + its derivatives. */
 export interface AssetDetail extends Asset {
@@ -235,6 +239,8 @@ export interface ListAssetsOpts {
   collection?: string | null
   /** A folder id, or the literal `'root'` for unfiled assets. */
   folder?: string | null
+  /** QA gate: only assets scored off-style (style_fit below the threshold). */
+  offStyle?: boolean
 }
 
 /** Keyset-paginated, server-filtered board list. */
@@ -247,6 +253,7 @@ export const listAssets = (projectId: string, opts: ListAssetsOpts = {}) => {
   if (opts.source?.length) p.set('source', opts.source.join(','))
   if (opts.collection) p.set('collection', opts.collection)
   if (opts.folder) p.set('folder', opts.folder)
+  if (opts.offStyle) p.set('off_style', 'true')
   const qs = p.toString()
   return request<AssetPage>(`/projects/${projectId}/assets${qs ? `?${qs}` : ''}`)
 }

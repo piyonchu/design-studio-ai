@@ -137,7 +137,8 @@ than anything else and directly answer the senior.
 
 ## 8. Provider cost model + optimization (B2 real / D2 / D3)
 
-Status: A1, A2, B1, C, B2 (mock), D1 are **shipped & merged**. Everything below
+Status: A1, A2, **A3**, B1, C, B2 (mock), D1, and the **embedding QA gate** are
+**shipped & merged**. Everything below
 incurs real spend, so it stays gated until a provider + key + budget is approved.
 Prices are pay-per-use, ~mid-2026; **verify live before wiring** (links at end).
 
@@ -182,7 +183,8 @@ cheaper to *train* a LoRA; either works for D3. Use a **separate key + budget**
   extension of D1's smartest-exemplar pick.
 - **IP-Adapter / reference-only** *(cheap)* — style transfer from an approved image
   without training a LoRA; a middle rung between D1 and D3.
-- **Embedding QA gate** *(free)* — auto-flag off-style generations using the
-  `style-fit` score we already compute, so reviewers only see on-canon candidates.
+- **Embedding QA gate** *(free)* — **shipped:** generate/derive cache each asset's
+  `style_fit` (mig 0019) vs approved peers; the board shows an "off-style %" badge
+  + a "Needs attention" filter (`?off_style`, `STYLE_QA_THRESHOLD` default 0.5).
 
 > Sources: [fal pricing](https://fal.ai/pricing) · [fal FLUX inpaint](https://fal.ai/models/fal-ai/flux-lora/inpainting) · [fal LoRA fast train](https://fal.ai/models/fal-ai/flux-lora-fast-training) · [Replicate flux-controlnet-inpaint](https://replicate.com/fermatresearch/flux-controlnet-inpaint) · [Replicate fine-tune FLUX](https://replicate.com/docs/get-started/fine-tune-with-flux) · [Replicate pricing](https://replicate.com/pricing). Verify current rates before enabling spend.

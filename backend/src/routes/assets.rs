@@ -34,7 +34,7 @@ pub fn router() -> Router<AppState> {
 }
 
 pub(crate) const ASSET_COLS: &str =
-    "id, project_id, name, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, exemplar, folder_id, current_version_id, created_at";
+    "id, project_id, name, kind, s3_key, mime_type, prompt, role, status, tags, source_kind, derivation, canon_version_id, exemplar, folder_id, current_version_id, style_fit, created_at";
 
 /// 10 MB cap on a single uploaded asset.
 const MAX_UPLOAD: usize = 10 * 1024 * 1024;
@@ -159,6 +159,24 @@ async fn generate(
     Ok((StatusCode::CREATED, Json(assets)))
 }
 
+/// QA gate: score a freshly-embedded asset's visual style-fit against the
+/// project's approved assets and cache it on the row, so the board can flag
+/// off-style candidates without a per-tile request. Best-effort (like embedding
+/// indexing): a failure leaves `style_fit` null, never blocks generation.
+async fn score_style_fit(state: &AppState, asset: &mut Asset) {
+    if let Ok((Some(score), _)) =
+        super::search::style_fit_score(&state.pool, asset.id, asset.project_id).await
+    {
+        let s = score as f32;
+        let _ = sqlx::query("UPDATE assets SET style_fit = $1 WHERE id = $2")
+            .bind(s)
+            .bind(asset.id)
+            .execute(&state.pool)
+            .await;
+        asset.style_fit = Some(s);
+    }
+}
+
 /// Seed `count` assets against the project's current canon (and approved style
 /// exemplar, if any). Shared by the sync `generate` route and the async job
 /// worker (`crate::jobs`) so both produce identical, canon-bound results.
@@ -246,6 +264,7 @@ pub(crate) async fn run_generate(
             Some(record_version(&state.pool, asset.id, &s3_key, &img.mime, Some(raw_prompt), None, created_by).await?);
         crate::mirror::save(project_id, asset.id, &img.mime, &img.bytes);
         ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&img.bytes)).await;
+        score_style_fit(state, &mut asset).await;
         assets.push(with_url(asset));
     }
     Ok(assets)
@@ -336,6 +355,18 @@ struct ListQuery {
     /// assets (folder_id IS NULL). Absent → no folder filter (all assets).
     #[serde(default)]
     folder: Option<String>,
+    /// QA gate: only assets scored off-style (style_fit below the threshold).
+    #[serde(default)]
+    off_style: Option<bool>,
+}
+
+/// Style-fit below this (0..1) flags an asset as off-style for the QA gate.
+/// Env-tunable; the board badge uses the same default.
+pub(crate) fn style_qa_threshold() -> f32 {
+    std::env::var("STYLE_QA_THRESHOLD")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0.5)
 }
 
 fn csv(s: &Option<String>) -> Vec<String> {
@@ -399,6 +430,9 @@ async fn list(
             }
         }
         None => {}
+    }
+    if q.off_style == Some(true) {
+        qb.push(" AND style_fit IS NOT NULL AND style_fit < ").push_bind(style_qa_threshold());
     }
     if let Some((ts, id)) = q.cursor.as_deref().and_then(decode_cursor) {
         qb.push(" AND (created_at, id) < (").push_bind(ts).push(", ").push_bind(id).push(")");
@@ -531,6 +565,7 @@ async fn derive(
         .await?;
         crate::mirror::save(project_id, asset.id, &img.mime, &img.bytes);
         ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&img.bytes)).await;
+        score_style_fit(&state, &mut asset).await;
         out.push(with_url(asset));
     }
     Ok((StatusCode::CREATED, Json(out)))

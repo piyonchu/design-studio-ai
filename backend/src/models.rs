@@ -253,6 +253,11 @@ pub struct Asset {
     /// Head version pointer (A2). Null only on pre-versioning legacy rows.
     #[sqlx(default)]
     pub current_version_id: Option<Uuid>,
+    /// QA gate: visual style-fit vs the project's approved assets at creation
+    /// (0..1), cached so the board can flag off-style candidates. Null = unscored
+    /// (nothing approved to compare against yet, or a pre-gate row).
+    #[sqlx(default)]
+    pub style_fit: Option<f32>,
     pub created_at: DateTime<Utc>,
     /// Stable, browser-usable URL for the image. Not stored — filled in by the
     /// route after fetching (see `routes::assets`). For object-stored assets
