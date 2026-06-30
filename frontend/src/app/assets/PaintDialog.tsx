@@ -296,17 +296,46 @@ export function PaintDialog({
                     onChange={(e) => setSize(Number(e.target.value))}
                     className="w-20 accent-teal"
                   />
+                  <input
+                    type="number"
+                    min={1}
+                    max={64}
+                    value={size}
+                    onChange={(e) => setSize(Math.min(64, Math.max(1, Number(e.target.value) || 1)))}
+                    aria-label="Brush size"
+                    className="w-12 rounded-[6px] bg-surface/60 px-1.5 py-1 text-xs text-text outline-none focus:ring-1 focus:ring-teal/40"
+                  />
+                  <span>px</span>
                 </label>
               )}
 
+              {/* Pixel ⇄ Smooth sliding switch */}
               <button
                 onClick={() => setPixel((v) => !v)}
                 title="Pixel-crisp vs smooth brush"
-                className={`rounded-[8px] border px-2.5 py-1.5 text-xs transition ${
-                  pixel ? 'border-teal/40 bg-teal/10 text-teal-bright' : 'border-white/10 text-text-dim hover:text-text'
-                }`}
+                role="switch"
+                aria-checked={pixel}
+                className="relative flex h-7 w-[116px] shrink-0 items-center rounded-full bg-surface/60 p-0.5 text-xs"
               >
-                {pixel ? 'Pixel' : 'Smooth'}
+                <span
+                  className={`absolute top-0.5 bottom-0.5 w-[56px] rounded-full bg-teal transition-all duration-150 ${
+                    pixel ? 'left-0.5' : 'left-[58px]'
+                  }`}
+                />
+                <span
+                  className={`relative z-10 grid h-full flex-1 place-items-center font-medium transition-colors ${
+                    pixel ? 'text-bg' : 'text-text-dim'
+                  }`}
+                >
+                  Pixel
+                </span>
+                <span
+                  className={`relative z-10 grid h-full flex-1 place-items-center font-medium transition-colors ${
+                    pixel ? 'text-text-dim' : 'text-bg'
+                  }`}
+                >
+                  Smooth
+                </span>
               </button>
 
               <button
