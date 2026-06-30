@@ -22,67 +22,86 @@ import {
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
-import { ApiError } from '../../lib/api'
+import { formatApiError } from '../../lib/api'
 import { AssetInspector } from './AssetInspector'
 import { ExportDialog } from '../export/ExportDialog'
 import { JobsBanner } from './JobsBanner'
 import { FolderTree } from './FolderTree'
 import { verticalConfig } from '../verticals'
 import { ConfirmDialog } from '../ui/Dialog'
+import { ErrorBanner } from '../ui/ErrorBanner'
+import { AssetImage } from '../ui/AssetImage'
+import { Panel, PanelBody, PanelHeader, PanelIcon, PanelInset, PanelToolbar, RailSection } from '../ui/Panel'
 
 const STATUSES: api.AssetStatus[] = ['candidate', 'approved', 'needs_review', 'rejected']
 
 // Status as visual language on the board: candidate = dashed amber, approved =
 // solid teal, needs_review = rose (with a pulsing flag), rejected = dimmed.
 const STATUS_RING: Record<api.AssetStatus, string> = {
-  candidate: 'ring-1 ring-amber-400/45',
+  candidate: 'ring-1 ring-warning/45',
   approved: 'ring-2 ring-teal/70',
-  needs_review: 'ring-2 ring-rose-400/55',
+  needs_review: 'ring-2 ring-danger/55',
   rejected: 'ring-1 ring-white/10 opacity-50',
 }
 const STATUS_DOT: Record<api.AssetStatus, string> = {
-  candidate: 'bg-amber-400',
+  candidate: 'bg-warning',
   approved: 'bg-teal',
-  needs_review: 'bg-rose-400',
+  needs_review: 'bg-danger',
   rejected: 'bg-white/30',
 }
 // Status as a labelled chip on every tile — colour PLUS icon + word, so review
 // state survives for colour-blind/greyscale users (DESIGN.md "Status Must
 // Survive Rule"). One chip, top-right, hides on hover to reveal the inspect btn.
+const STATUS_FILTER_TONE: Record<api.AssetStatus, 'teal' | 'amber' | 'rose' | 'dim'> = {
+  candidate: 'amber',
+  approved: 'teal',
+  needs_review: 'rose',
+  rejected: 'dim',
+}
+
+const SOURCE_CHIP: Record<string, string> = {
+  uploaded: 'bg-indigo/20 text-indigo-bright',
+  seeded: 'bg-teal/20 text-teal-bright',
+  derived: 'bg-warning/20 text-warning',
+}
 const STATUS_CHIP: Record<api.AssetStatus, { label: string; cls: string; Icon: Icon; pulse?: boolean }> = {
-  candidate: { label: 'Candidate', cls: 'bg-amber-400/90 text-bg', Icon: CircleDashedIcon },
+  candidate: { label: 'Candidate', cls: 'bg-warning/90 text-bg', Icon: CircleDashedIcon },
   approved: { label: 'Approved', cls: 'bg-teal/90 text-bg', Icon: CheckIcon },
-  needs_review: { label: 'Review', cls: 'bg-rose-500/90 text-white', Icon: FlagIcon, pulse: true },
+  needs_review: { label: 'Review', cls: 'bg-danger/90 text-white', Icon: FlagIcon, pulse: true },
   rejected: { label: 'Rejected', cls: 'bg-black/70 text-text-muted', Icon: XIcon },
 }
 
 // Rail building blocks — module-scoped so they keep a stable component identity
 // (defining them inside AssetLibrary remounted the whole rail on every keystroke).
-function FilterChip({ active, count, onClick, children }: {
+function FilterChip({
+  active,
+  count,
+  onClick,
+  children,
+  activeTone = 'teal',
+}: {
   active: boolean
   count?: number
   onClick: () => void
   children: ReactNode
+  activeTone?: 'teal' | 'amber' | 'rose' | 'dim'
 }) {
+  const activeCls = {
+    teal: 'bg-teal/15 text-teal-bright',
+    amber: 'bg-warning/15 text-warning',
+    rose: 'bg-danger/15 text-danger',
+    dim: 'bg-white/10 text-text-muted',
+  }[activeTone]
   return (
     <button
       onClick={onClick}
       className={`flex w-full items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-xs capitalize transition ${
-        active ? 'bg-teal/15 text-teal-bright' : 'text-text-dim hover:bg-white/5 hover:text-text'
+        active ? activeCls : 'text-text-dim hover:bg-white/5 hover:text-text'
       }`}
     >
       <span className="flex-1 truncate">{children}</span>
       {count != null && <span className="text-[10px] tabular-nums text-text-dim">{count}</span>}
     </button>
-  )
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="mb-4">
-      <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-text-dim">{title}</p>
-      {children}
-    </div>
   )
 }
 
@@ -113,6 +132,9 @@ export function AssetLibrary({
   const [busy, setBusy] = useState(false)
   const [inspectId, setInspectId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [boardLoading, setBoardLoading] = useState(true)
+  const [boardError, setBoardError] = useState<string | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
 
   // Filters
   const [query, setQuery] = useState('')
@@ -179,6 +201,8 @@ export function AssetLibrary({
   // filtering + ordering; we just render the page.
   useEffect(() => {
     let alive = true
+    setBoardLoading(true)
+    setBoardError(null)
     api
       .listAssets(projectId, {
         limit: PAGE,
@@ -194,11 +218,20 @@ export function AssetLibrary({
         setAssets(page.items)
         setNextCursor(page.next_cursor)
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (alive) setBoardError(formatApiError(err, "Couldn't load the asset board. Check your connection and retry."))
+      })
+      .finally(() => {
+        if (alive) setBoardLoading(false)
+      })
     return () => {
       alive = false
     }
-  }, [projectId, statuses, roles, sources, collectionId, folderSel, offStyle])
+  }, [projectId, statuses, roles, sources, collectionId, folderSel, offStyle, reloadTick])
+
+  function reloadBoard() {
+    setReloadTick((n) => n + 1)
+  }
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return
@@ -216,8 +249,8 @@ export function AssetLibrary({
       })
       setAssets((a) => [...a, ...page.items])
       setNextCursor(page.next_cursor)
-    } catch {
-      /* ignore */
+    } catch (err) {
+      setError(formatApiError(err, "Couldn't load more assets. Try again."))
     } finally {
       setLoadingMore(false)
     }
@@ -231,7 +264,7 @@ export function AssetLibrary({
       const r = await api.createRecipe(projectId, name, ins)
       setRecipes((rs) => [r, ...rs])
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Save recipe failed.')
+      setError(formatApiError(err, "Couldn't save the recipe. Try again."))
     }
   }
 
@@ -332,10 +365,7 @@ export function AssetLibrary({
   }
 
   function genError(err: unknown) {
-    // Surface the server's message — already user-readable and specific:
-    // not-configured (503), the cost guardrail (503 credit floor / 429 daily
-    // cap), or content policy (400). A generic fallback otherwise.
-    setError(err instanceof ApiError ? err.message : 'Request failed.')
+    setError(formatApiError(err, "Couldn't complete that request. Try again."))
   }
 
   // Poll a generation job to completion (non-blocking), then refresh the board.
@@ -367,7 +397,7 @@ export function AssetLibrary({
         return
       }
       if (job.status === 'failed') {
-        setError(job.error || 'Generation failed.')
+        setError(job.error || "Generation didn't finish. Check the board and try again.")
         return
       }
       await new Promise((r) => setTimeout(r, 700))
@@ -402,6 +432,16 @@ export function AssetLibrary({
   }
 
   async function upload(file: File) {
+    if (!file.type.startsWith('image/')) {
+      setError('Choose an image file — PNG, JPEG, or WebP.')
+      return
+    }
+    const maxBytes = 20 * 1024 * 1024
+    if (file.size > maxBytes) {
+      setError('Images must be 20 MB or smaller.')
+      return
+    }
+    if (busy) return
     setBusy(true)
     setError(null)
     try {
@@ -409,7 +449,7 @@ export function AssetLibrary({
       setAssets((a) => [created, ...a])
       bumpFacets()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Upload failed.')
+      setError(formatApiError(err, "Couldn't upload that image. Try again."))
     } finally {
       setBusy(false)
     }
@@ -465,7 +505,7 @@ export function AssetLibrary({
     bumpFacets()
     setBusy(false)
     if (failed.length) {
-      setError(`Derived ${ok} of ${PRESETS.length}. Couldn't generate: ${failed.join(', ')}.`)
+      setError(`Derived ${ok} of ${PRESETS.length}. These presets failed: ${failed.join(', ')}.`)
     }
   }
 
@@ -494,7 +534,7 @@ export function AssetLibrary({
       setAssets((a) => a.map((x) => (x.id === id ? updated : x)))
       bumpFacets()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Update failed.')
+      setError(formatApiError(err, "Couldn't update that asset. Try again."))
     }
   }
 
@@ -525,7 +565,7 @@ export function AssetLibrary({
       setSelected(new Set())
       bumpFacets()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Batch update failed.')
+      setError(formatApiError(err, "Couldn't update the selected assets. Try again."))
     } finally {
       setBusy(false)
     }
@@ -548,18 +588,18 @@ export function AssetLibrary({
       setBatchCol('')
       setSelected(new Set())
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Add failed.')
+      setError(formatApiError(err, "Couldn't add to the collection. Try again."))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="glass flex min-h-0 flex-1 overflow-hidden rounded-[16px]">
+    <Panel layout="split">
       {/* Filter rail (collapsible — reclaims board width) */}
       {railOpen ? (
-      <aside className="flex w-56 shrink-0 flex-col border-r border-white/8">
-        <div className="flex items-center gap-2 border-b border-white/8 p-3">
+      <aside className="flex min-h-0 w-56 shrink-0 flex-col border-r border-white/8">
+        <PanelHeader size="compact">
           <div className="flex flex-1 items-center gap-2 rounded-[10px] bg-surface-2/60 px-2.5 py-2 transition focus-within:ring-1 focus-within:ring-teal/40">
             <MagnifyingGlassIcon size={14} className="text-text-dim" />
             <input
@@ -574,13 +614,13 @@ export function AssetLibrary({
             onClick={() => setRailOpen(false)}
             aria-label="Collapse filters"
             title="Collapse filters"
-            className="grid size-8 shrink-0 place-items-center rounded-[8px] text-text-dim transition hover:bg-white/5 hover:text-text"
+            className="icon-btn size-8 shrink-0 focus-visible:ring-2 focus-visible:ring-indigo/40"
           >
             <SidebarSimpleIcon size={16} />
           </button>
-        </div>
+        </PanelHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <PanelBody density="dense">
           <FolderTree
             projectId={projectId}
             folders={folders}
@@ -595,20 +635,21 @@ export function AssetLibrary({
             title="Show only candidates that don't match your approved style"
             className={`mb-3 flex w-full items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
               offStyle
-                ? 'border-amber-400/40 bg-amber-400/10 text-amber-200'
+                ? 'border-warning/40 bg-warning/10 text-warning'
                 : 'border-white/10 text-text-dim hover:text-text'
             }`}
           >
-            <WarningIcon size={14} weight="fill" className={offStyle ? 'text-amber-300' : ''} />
+            <WarningIcon size={14} weight="fill" className={offStyle ? 'text-warning' : ''} />
             Needs attention
           </button>
 
-          <Section title="Status">
+          <RailSection title="Status">
             {STATUSES.map((s) => (
               <FilterChip
                 key={s}
                 active={statuses.has(s)}
                 count={statusCounts.get(s) ?? 0}
+                activeTone={STATUS_FILTER_TONE[s]}
                 onClick={() => setStatuses((set) => toggle(set, s))}
               >
                 <span className="inline-flex items-center gap-1.5">
@@ -617,28 +658,28 @@ export function AssetLibrary({
                 </span>
               </FilterChip>
             ))}
-          </Section>
+          </RailSection>
 
           {roleOptions.length > 0 && (
-            <Section title="Role">
+            <RailSection title="Role">
               {roleOptions.map(([r, n]) => (
                 <FilterChip key={r} active={roles.has(r)} count={n} onClick={() => setRoles((set) => toggle(set, r))}>
                   {r}
                 </FilterChip>
               ))}
-            </Section>
+            </RailSection>
           )}
 
-          <Section title="Source">
+          <RailSection title="Source">
             {sourceOptions.map(([s, n]) => (
               <FilterChip key={s} active={sources.has(s)} count={n} onClick={() => setSources((set) => toggle(set, s))}>
                 {s}
               </FilterChip>
             ))}
-          </Section>
+          </RailSection>
 
           {collections.length > 0 && (
-            <Section title="Collection">
+            <RailSection title="Collection">
               {collections.map((c) => (
                 <FilterChip
                   key={c.id}
@@ -649,9 +690,9 @@ export function AssetLibrary({
                   {c.name}
                 </FilterChip>
               ))}
-            </Section>
+            </RailSection>
           )}
-        </div>
+        </PanelBody>
 
         {activeFilters > 0 && (
           <button
@@ -663,7 +704,7 @@ export function AssetLibrary({
         )}
       </aside>
       ) : (
-        <aside className="flex w-12 shrink-0 flex-col items-center gap-2 border-r border-white/8 py-3">
+        <aside className="flex min-h-0 w-12 shrink-0 flex-col items-center gap-2 border-r border-white/8 py-3">
           <button
             onClick={() => setRailOpen(true)}
             aria-label="Show filters"
@@ -681,11 +722,11 @@ export function AssetLibrary({
       )}
 
       {/* Main column */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-white/8 px-5 py-4">
-          <span className="grid size-7 place-items-center rounded-[8px] bg-accent/15 text-teal-bright">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <PanelHeader>
+          <PanelIcon>
             <ImageIcon size={15} weight="fill" />
-          </span>
+          </PanelIcon>
           <p className="text-sm font-medium text-text">Asset Board</p>
           <span className="text-sm text-text-dim">
             · {displayed.length}
@@ -720,11 +761,11 @@ export function AssetLibrary({
             <UploadSimpleIcon size={14} />
             Upload base
           </button>
-        </div>
+        </PanelHeader>
 
         {/* Batch toolbar (select mode) — else generate / derive bar */}
         {selecting ? (
-          <div className="flex flex-wrap items-center gap-2 border-b border-white/8 px-5 py-3">
+          <PanelToolbar>
             <span className="text-sm text-text">{selected.size} selected</span>
             <button
               onClick={() =>
@@ -732,9 +773,8 @@ export function AssetLibrary({
                   title: `Approve ${selected.size} ${selected.size === 1 ? 'asset' : 'assets'}?`,
                   body: (
                     <>
-                      Approving promotes {selected.size} {selected.size === 1 ? 'asset' : 'assets'} into
-                      the project canon — approved work conditions future generations. You can still
-                      re-review each one afterward.
+                      Approved assets enter the project canon and condition future generations.
+                      You can still re-review each one in the Review tab.
                     </>
                   ),
                   confirmLabel: `Approve ${selected.size}`,
@@ -751,7 +791,7 @@ export function AssetLibrary({
             <button
               onClick={() => batchStatus('rejected')}
               disabled={!selected.size || busy}
-              className="inline-flex items-center gap-1.5 rounded-[8px] border border-white/10 px-3 py-1.5 text-sm text-rose-200 transition hover:bg-white/5 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-[8px] border border-white/10 px-3 py-1.5 text-sm text-danger transition hover:bg-white/5 disabled:opacity-40"
             >
               <XIcon size={14} weight="bold" />
               Reject
@@ -794,7 +834,7 @@ export function AssetLibrary({
                 Clear selection
               </button>
             )}
-          </div>
+          </PanelToolbar>
         ) : baseId ? (
           <div className="border-b border-white/8 p-4">
             <div className="mx-auto max-w-2xl">
@@ -806,9 +846,9 @@ export function AssetLibrary({
                       title: `Derive a full set of ${PRESETS.length}?`,
                       body: (
                         <>
-                          This generates {PRESETS.length} new variants from the selected base in one go
-                          and draws from your shared OpenRouter credit. Each lands as a candidate for
-                          review.
+                          This generates {PRESETS.length} variants from the selected base in one
+                          step and uses your shared generation credit. Each lands on the board as a
+                          candidate for review.
                         </>
                       ),
                       confirmLabel: `Derive ${PRESETS.length}`,
@@ -851,7 +891,7 @@ export function AssetLibrary({
                       <button
                         onClick={() => removeRecipe(r.id)}
                         aria-label="Delete recipe"
-                        className="text-text-dim opacity-0 transition hover:text-rose-300 group-hover:opacity-100"
+                        className="text-text-dim opacity-0 transition hover:text-danger group-hover:opacity-100"
                       >
                         <XIcon size={11} />
                       </button>
@@ -952,12 +992,27 @@ export function AssetLibrary({
           </form>
         ) : null}
 
-        {error && <p className="px-5 pt-3 text-xs text-rose-300">{error}</p>}
+        {error && (
+          <PanelInset>
+            <ErrorBanner message={error} onDismiss={() => setError(null)} />
+          </PanelInset>
+        )}
+
+        {boardError && (
+          <PanelInset>
+            <ErrorBanner
+              message={boardError}
+              onRetry={reloadBoard}
+              onDismiss={() => setBoardError(null)}
+            />
+          </PanelInset>
+        )}
 
         {!selecting && !baseId && dupHits.length > 0 && (
-          <div className="mx-5 mt-3 flex items-center gap-3 rounded-[10px] border border-amber-400/25 bg-amber-400/8 px-3 py-2">
-            <WarningIcon size={16} weight="fill" className="shrink-0 text-amber-300" />
-            <p className="shrink-0 text-xs text-amber-100">
+          <PanelInset>
+          <div className="flex items-center gap-3 rounded-[10px] border border-warning/25 bg-warning/8 px-3 py-2">
+            <WarningIcon size={16} weight="fill" className="shrink-0 text-warning" />
+            <p className="shrink-0 text-xs text-warning">
               {dupHits.length} similar asset{dupHits.length > 1 ? 's' : ''} already exist
             </p>
             <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
@@ -968,7 +1023,7 @@ export function AssetLibrary({
                   title={`${s.prompt ?? s.role ?? ''} · ${Math.round(s.score * 100)}% match`}
                   className="size-9 shrink-0 overflow-hidden rounded-[7px] ring-1 ring-white/15 transition hover:ring-teal"
                 >
-                  <img src={s.url} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+                  <AssetImage src={s.url} alt="" className="size-full object-cover" />
                 </button>
               ))}
             </div>
@@ -980,28 +1035,33 @@ export function AssetLibrary({
               <XIcon size={14} />
             </button>
           </div>
+          </PanelInset>
         )}
 
-        <div className="px-5 pt-3 empty:hidden">
+        <PanelInset>
           <JobsBanner projectId={projectId} />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          {displayed.length === 0 ? (
+        </PanelInset>
+
+        <PanelBody className="pt-3">
+          {boardLoading && displayed.length === 0 ? (
+            <div className="grid place-items-center py-16 text-text-dim">
+              <SpinnerGapIcon size={20} className="animate-spin" />
+            </div>
+          ) : displayed.length === 0 ? (
             <p className="px-1 py-16 text-center text-sm text-text-dim">
               {activeFilters > 0
-                ? 'No assets match these filters.'
-                : 'This library is empty. Click “New asset” to generate or upload your first reference.'}
+                ? 'No assets match these filters. Clear filters or try a different search.'
+                : 'No assets on the board yet. Use New asset to upload a reference or generate your first one.'}
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {displayed.map((a) => {
                 const isSel = selected.has(a.id)
                 const isBase = !selecting && a.id === baseId
-                // Selection uses sky (multi-select and derive base are separate
-                // modes, never shown together) — distinct from the status rings
-                // (approved=teal, candidate=amber, needs_review=rose).
+                // Selection uses indigo (multi-select / derive base) — distinct from
+                // status rings (approved=teal, candidate=warning, needs_review=danger).
                 const ring = isSel || isBase
-                  ? 'ring-2 ring-sky-400'
+                  ? 'ring-2 ring-indigo-bright/80'
                   : STATUS_RING[a.status]
                 return (
                   <figure
@@ -1030,7 +1090,7 @@ export function AssetLibrary({
                       e.dataTransfer.setData('text/asset-id', a.id)
                       e.dataTransfer.effectAllowed = 'move'
                     }}
-                    className={`group relative cursor-pointer overflow-hidden rounded-[12px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${ring}`}
+                    className={`group relative cursor-pointer overflow-hidden rounded-[12px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-bright/80 ${ring}`}
                     title={a.derivation ?? a.prompt ?? a.role ?? ''}
                   >
                     {a.kind === 'audio' ? (
@@ -1044,11 +1104,9 @@ export function AssetLibrary({
                         />
                       </div>
                     ) : (
-                      <img
+                      <AssetImage
                         src={a.url}
                         alt={a.prompt ?? a.role ?? ''}
-                        loading="lazy"
-                        decoding="async"
                         className="aspect-square w-full object-cover"
                       />
                     )}
@@ -1057,7 +1115,7 @@ export function AssetLibrary({
                     {selecting && (
                       <span
                         className={`absolute left-1.5 top-1.5 grid size-5 place-items-center rounded-[6px] border transition ${
-                          isSel ? 'border-sky-400 bg-sky-400 text-bg' : 'border-white/50 bg-black/40 text-transparent'
+                          isSel ? 'border-indigo-bright bg-indigo-bright text-bg' : 'border-white/50 bg-black/40 text-transparent'
                         }`}
                       >
                         <CheckIcon size={12} weight="bold" />
@@ -1065,14 +1123,18 @@ export function AssetLibrary({
                     )}
 
                     {!selecting && (
-                      <span className="absolute left-1.5 top-1.5 rounded-[6px] bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white/90">
+                      <span
+                        className={`absolute left-1.5 top-1.5 rounded-[6px] px-1.5 py-0.5 text-[10px] font-medium ${
+                          SOURCE_CHIP[a.source_kind] ?? 'bg-black/70 text-white/90'
+                        }`}
+                      >
                         {a.source_kind}
                       </span>
                     )}
 
                     {!selecting && a.exemplar && (
                       <span
-                        className="absolute bottom-1.5 left-1.5 z-10 grid size-5 place-items-center rounded-[6px] bg-amber-400/85 text-bg"
+                        className="absolute bottom-1.5 left-1.5 z-10 grid size-5 place-items-center rounded-[6px] bg-warning/85 text-bg"
                         title="Style exemplar — conditions new generations"
                       >
                         <StarIcon size={12} weight="fill" />
@@ -1102,7 +1164,7 @@ export function AssetLibrary({
                           setInspectId(a.id)
                         }}
                         aria-label={`Inspect ${api.displayName(a)}`}
-                        className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-[6px] bg-black/70 text-white/90 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                        className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-[6px] bg-black/70 text-white/90 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-bright/80"
                       >
                         <MagnifyingGlassIcon size={13} />
                       </button>
@@ -1128,7 +1190,7 @@ export function AssetLibrary({
                             review(a.id, 'rejected')
                           }}
                           aria-label="Reject"
-                          className="flex flex-1 items-center justify-center rounded-[6px] bg-white/10 py-1 text-rose-200 transition hover:bg-white/20"
+                          className="flex flex-1 items-center justify-center rounded-[6px] bg-white/10 py-1 text-danger transition hover:bg-white/20"
                         >
                           <XIcon size={13} weight="bold" />
                         </button>
@@ -1139,7 +1201,7 @@ export function AssetLibrary({
                     {!selecting && a.style_fit != null && a.style_fit < api.STYLE_FIT_THRESHOLD && (
                       <span
                         title={`Off-style — ${Math.round(a.style_fit * 100)}% visual match to approved assets`}
-                        className="absolute bottom-7 right-1.5 inline-flex items-center gap-1 rounded-[6px] bg-amber-400/85 px-1.5 py-0.5 text-[10px] font-semibold text-bg"
+                        className="absolute bottom-7 right-1.5 inline-flex items-center gap-1 rounded-[6px] bg-warning/85 px-1.5 py-0.5 text-[10px] font-semibold text-bg"
                       >
                         <WarningIcon size={11} weight="fill" />
                         {Math.round(a.style_fit * 100)}%
@@ -1163,11 +1225,11 @@ export function AssetLibrary({
                 disabled={loadingMore}
                 className="rounded-[8px] border border-white/10 px-4 py-2 text-sm text-text-dim transition hover:text-text disabled:opacity-50"
               >
-                {loadingMore ? 'Loading…' : 'Load more'}
+                {loadingMore ? 'Loading more assets…' : 'Load more assets'}
               </button>
             </div>
           )}
-        </div>
+        </PanelBody>
       </div>
 
       <AssetInspector
@@ -1214,6 +1276,6 @@ export function AssetLibrary({
           }}
         />
       )}
-    </div>
+    </Panel>
   )
 }

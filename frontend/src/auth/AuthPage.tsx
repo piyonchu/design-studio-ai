@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { SparkleIcon, SpinnerGapIcon } from '@phosphor-icons/react'
 import { useAuth } from './AuthContext'
-import { ApiError } from '../lib/api'
+import { formatApiError } from '../lib/api'
 
 type Mode = 'login' | 'signup'
 
@@ -34,7 +34,7 @@ export function AuthPage() {
     e.preventDefault()
     setError(null)
     if (mode === 'signup' && password.length < 8) {
-      setError('Password must be at least 8 characters.')
+      setError('Use at least 8 characters for your password.')
       return
     }
     setBusy(true)
@@ -43,7 +43,7 @@ export function AuthPage() {
       else await signup(email, password)
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      setError(formatApiError(err, "Couldn't sign you in. Check your email and password, then try again."))
     } finally {
       setBusy(false)
     }

@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
-  ImageIcon,
-  ChatCircleIcon,
-  PaletteIcon,
   ClockCounterClockwiseIcon,
 } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { AssetInspector } from '../assets/AssetInspector'
+import { Panel, PanelBody, PanelHeader, PanelIcon } from '../ui/Panel'
 
 function ago(iso: string): string {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
@@ -17,16 +15,22 @@ function ago(iso: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
-const ICON = {
-  asset: ImageIcon,
-  comment: ChatCircleIcon,
-  canon: PaletteIcon,
+const ROW_BG = {
+  asset: 'hover:bg-teal/8',
+  comment: 'hover:bg-indigo/8',
+  canon: 'hover:bg-warning/8',
 } as const
 
-const TINT = {
-  asset: 'text-teal-bright',
-  comment: 'text-indigo-bright',
-  canon: 'text-amber-300',
+const KIND_CHIP = {
+  asset: 'bg-teal/15 text-teal-bright',
+  comment: 'bg-indigo/15 text-indigo-bright',
+  canon: 'bg-warning/15 text-warning',
+} as const
+
+const KIND_LABEL = {
+  asset: 'Asset',
+  comment: 'Comment',
+  canon: 'Canon',
 } as const
 
 /**
@@ -46,16 +50,16 @@ export function ActivityView({ projectId }: { projectId: string }) {
   }, [projectId])
 
   return (
-    <div className="glass flex min-h-0 flex-1 flex-col rounded-[16px]">
-      <div className="flex items-center gap-2 border-b border-white/8 px-5 py-4">
-        <span className="grid size-7 place-items-center rounded-[8px] bg-accent/15 text-teal-bright">
+    <Panel>
+      <PanelHeader>
+        <PanelIcon>
           <ClockCounterClockwiseIcon size={15} weight="fill" />
-        </span>
+        </PanelIcon>
         <p className="text-sm font-medium text-text">Activity</p>
         {events && <span className="text-sm text-text-dim">· {events.length}</span>}
-      </div>
+      </PanelHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+      <PanelBody>
         {events == null ? (
           <p className="px-1 py-16 text-center text-sm text-text-dim">Loading…</p>
         ) : events.length === 0 ? (
@@ -65,7 +69,6 @@ export function ActivityView({ projectId }: { projectId: string }) {
         ) : (
           <ol className="mx-auto max-w-2xl space-y-1">
             {events.map((e, i) => {
-              const Icon = ICON[e.kind]
               const clickable = !!e.asset_id
               return (
                 <li key={i}>
@@ -73,11 +76,13 @@ export function ActivityView({ projectId }: { projectId: string }) {
                     onClick={() => e.asset_id && setInspectId(e.asset_id)}
                     disabled={!clickable}
                     className={`flex w-full items-start gap-3 rounded-[10px] px-2.5 py-2 text-left transition ${
-                      clickable ? 'hover:bg-white/5' : 'cursor-default'
+                      clickable ? `${ROW_BG[e.kind]} cursor-pointer` : 'cursor-default'
                     }`}
                   >
-                    <span className={`mt-0.5 shrink-0 ${TINT[e.kind]}`}>
-                      <Icon size={16} weight="fill" />
+                    <span
+                      className={`mt-0.5 shrink-0 rounded-[6px] px-1.5 py-0.5 text-[10px] font-medium ${KIND_CHIP[e.kind]}`}
+                    >
+                      {KIND_LABEL[e.kind]}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm text-text-muted">{e.summary}</span>
                     <span className="mt-0.5 shrink-0 text-[10px] tabular-nums text-text-dim">{ago(e.at)}</span>
@@ -87,7 +92,7 @@ export function ActivityView({ projectId }: { projectId: string }) {
             })}
           </ol>
         )}
-      </div>
+      </PanelBody>
 
       <AssetInspector
         assetId={inspectId}
@@ -96,6 +101,6 @@ export function ActivityView({ projectId }: { projectId: string }) {
         onChanged={() => {}}
         onDeleted={() => setInspectId(null)}
       />
-    </div>
+    </Panel>
   )
 }

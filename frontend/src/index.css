@@ -28,10 +28,23 @@
   --color-success: #2dd4bf;
   --color-info: #818cf8;
 
+  /* Semantic surface washes — 4–8% accent fills for chips, rows, and alerts. */
+  --color-surface-teal: oklch(0.22 0.03 180 / 0.55);
+  --color-surface-indigo: oklch(0.22 0.04 275 / 0.55);
+  --color-surface-warning: oklch(0.24 0.05 85 / 0.5);
+  --color-surface-danger: oklch(0.22 0.04 15 / 0.5);
+
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 
   --radius-panel: 16px;
   --radius-control: 10px;
+
+  /* AppShell: w-16 rail + left-3 inset + 12px gutter.
+     Use a unique name — do NOT define --spacing-md/xl/etc. here; Tailwind v4 maps
+     max-w-md, max-w-xl, p-md, gap-lg, etc. to the --spacing-* namespace. */
+  --spacing-shell-rail: 5.5rem;
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 html,
@@ -46,6 +59,43 @@ body {
   color: var(--color-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Shared icon control — 32px hit target, visible keyboard focus. */
+.icon-btn {
+  display: grid;
+  place-items: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  border-radius: var(--radius-control);
+  color: var(--color-text-dim);
+  transition:
+    color 180ms var(--ease-out-quart),
+    background-color 180ms var(--ease-out-quart);
+}
+
+.icon-btn:hover {
+  background: rgb(255 255 255 / 0.05);
+  color: var(--color-text);
+}
+
+.icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.45);
+}
+
+/* App shell main column offset — avoids Tailwind arbitrary-value drift. */
+.shell-main {
+  padding-left: var(--spacing-shell-rail);
+}
+
+/* Project tab content must fill the workspace column. */
+.tab-fill {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
 }
 
 /* Ambient obsidian field with faint indigo/teal aurora, fixed behind content. */

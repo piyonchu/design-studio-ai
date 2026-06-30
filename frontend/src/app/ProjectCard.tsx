@@ -42,11 +42,16 @@ export function ProjectCard({
       </div>
 
       <div className="p-4">
-        <h3 className="truncate text-sm font-semibold text-text">{project.name}</h3>
+        <h3 className="truncate text-sm font-semibold text-text" title={project.name}>
+          {project.name}
+        </h3>
         <div className="mt-2 flex min-w-0 items-center gap-1.5">
-          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-teal/15 px-2 py-0.5 text-[11px] font-medium text-teal-bright">
+          <span
+            className="inline-flex max-w-full items-center gap-1 rounded-full bg-teal/15 px-2 py-0.5 text-[11px] font-medium text-teal-bright"
+            title={project.brief ?? undefined}
+          >
             <SparkleIcon size={11} weight="fill" className="shrink-0" />
-            <span className="truncate">{project.brief ? project.brief : 'No AI updates yet'}</span>
+            <span className="truncate">{project.brief ? project.brief : 'No brief yet'}</span>
           </span>
         </div>
       </div>

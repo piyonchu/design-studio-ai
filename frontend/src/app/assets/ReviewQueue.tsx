@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CheckIcon, XIcon, FlagIcon, SpinnerGapIcon, TrayIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
-import { ApiError } from '../../lib/api'
+import { formatApiError } from '../../lib/api'
 import { CommentThread } from './CommentThread'
+import { ErrorBanner } from '../ui/ErrorBanner'
+import { AssetImage } from '../ui/AssetImage'
+import { Panel, PanelBody, PanelHeader, PanelIcon } from '../ui/Panel'
 
 /**
  * Review queue — the candidates awaiting a decision as a focused worklist.
@@ -18,6 +21,7 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
 
   // Style-fit of the focused candidate vs the project's approved assets.
   useEffect(() => {
@@ -35,6 +39,8 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
 
   useEffect(() => {
     let alive = true
+    setLoading(true)
+    setError(null)
     api
       // Server-filtered to the pending statuses; a worklist rarely exceeds 100.
       .listAssets(projectId, { status: ['candidate', 'needs_review'], limit: 100 })
@@ -44,12 +50,12 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
         setQueue(pending)
         setFocusId((id) => id ?? pending[0]?.id ?? null)
       })
-      .catch(() => alive && setError('Failed to load the queue.'))
+      .catch((err) => alive && setError(formatApiError(err, "Couldn't load the review queue. Try again.")))
       .finally(() => alive && setLoading(false))
     return () => {
       alive = false
     }
-  }, [projectId])
+  }, [projectId, reloadTick])
 
   const focused = useMemo(() => queue.find((a) => a.id === focusId) ?? null, [queue, focusId])
 
@@ -69,28 +75,38 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
         return next
       })
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Update failed.')
+      setError(formatApiError(err, "Couldn't save that decision. Try again."))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="glass flex min-h-0 flex-1 overflow-hidden rounded-[16px]">
+    <Panel layout="split">
       {/* Pending stack */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-white/8">
-        <div className="flex items-center gap-2 border-b border-white/8 px-4 py-4">
-          <span className="grid size-7 place-items-center rounded-[8px] bg-amber-400/15 text-amber-300">
+      <aside className="flex min-h-0 w-64 shrink-0 flex-col border-r border-white/8">
+        <PanelHeader>
+          <PanelIcon className="bg-warning/15 text-warning">
             <TrayIcon size={15} weight="fill" />
-          </span>
+          </PanelIcon>
           <p className="text-sm font-medium text-text">Review Queue</p>
           <span className="text-sm text-text-dim">· {queue.length}</span>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        </PanelHeader>
+        <PanelBody density="dense" className="p-2">
+          {error && !loading && (
+            <ErrorBanner
+              message={error}
+              onRetry={() => setReloadTick((n) => n + 1)}
+              onDismiss={() => setError(null)}
+              className="mb-2"
+            />
+          )}
           {loading ? (
-            <p className="px-2 py-8 text-center text-xs text-text-dim">Loading…</p>
+            <p className="px-2 py-8 text-center text-xs text-text-dim">Loading review queue…</p>
           ) : queue.length === 0 ? (
-            <p className="px-2 py-12 text-center text-sm text-text-dim">All caught up — nothing to review.</p>
+            <p className="px-2 py-12 text-center text-sm text-text-dim">
+              Nothing to review. Generate or derive assets on the board — candidates land here.
+            </p>
           ) : (
             queue.map((a) => (
               <button
@@ -100,30 +116,32 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
                   a.id === focusId ? 'bg-teal/12 ring-1 ring-teal/40' : 'hover:bg-white/5'
                 }`}
               >
-                <img src={a.url} alt="" loading="lazy" decoding="async" className="size-11 shrink-0 rounded-[8px] object-cover ring-1 ring-white/10" />
+                <AssetImage src={a.url} alt="" className="size-11 shrink-0 rounded-[8px] object-cover ring-1 ring-white/10" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs text-text">{api.displayName(a)}</span>
                   <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-text-dim">
-                    <span className={`size-1.5 rounded-full ${a.status === 'needs_review' ? 'bg-rose-400' : 'bg-amber-400'}`} />
+                    <span className={`size-1.5 rounded-full ${a.status === 'needs_review' ? 'bg-danger' : 'bg-warning'}`} />
                     {a.status.replace('_', ' ')} · {a.source_kind}
                   </span>
                 </span>
               </button>
             ))
           )}
-        </div>
+        </PanelBody>
       </aside>
 
       {/* Focused candidate */}
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!focused ? (
           <div className="grid flex-1 place-items-center px-6 text-center text-sm text-text-dim">
-            {queue.length === 0 ? 'No candidates pending. Generate or derive assets to review them here.' : 'Select a candidate.'}
+            {queue.length === 0
+              ? 'Generate or derive assets on the board to review them here.'
+              : 'Pick a candidate from the list to review.'}
           </div>
         ) : (
           <div className="flex min-h-0 flex-1">
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6">
-              <img
+              <AssetImage
                 src={focused.url}
                 alt={focused.role ?? ''}
                 className="max-h-[52vh] max-w-full rounded-[14px] object-contain ring-1 ring-white/10"
@@ -135,8 +153,8 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
                     fit.score >= 0.75
                       ? 'bg-teal/15 text-teal-bright'
                       : fit.score >= 0.5
-                        ? 'bg-amber-400/15 text-amber-200'
-                        : 'bg-rose-500/15 text-rose-200'
+                        ? 'bg-warning/15 text-warning'
+                        : 'bg-danger/15 text-danger'
                   }`}
                 >
                   Style fit {Math.round(fit.score * 100)}%
@@ -155,7 +173,7 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
                 <button
                   onClick={() => decide(focused.id, 'needs_review')}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-white/10 px-4 py-2 text-sm text-amber-200 transition hover:bg-white/5 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-white/10 px-4 py-2 text-sm text-warning transition hover:bg-white/5 disabled:opacity-50"
                 >
                   <FlagIcon size={15} weight="fill" />
                   Needs review
@@ -163,13 +181,13 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
                 <button
                   onClick={() => decide(focused.id, 'rejected')}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-white/10 px-4 py-2 text-sm text-rose-200 transition hover:bg-white/5 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-white/10 px-4 py-2 text-sm text-danger transition hover:bg-white/5 disabled:opacity-50"
                 >
                   <XIcon size={15} weight="bold" />
                   Reject
                 </button>
               </div>
-              {error && <p className="text-xs text-rose-300">{error}</p>}
+              {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mt-3" />}
               <p className="max-w-md text-center text-xs text-text-dim">
                 {focused.derivation ?? focused.prompt ?? focused.role ?? ''}
               </p>
@@ -182,6 +200,6 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
           </div>
         )}
       </div>
-    </div>
+    </Panel>
   )
 }

@@ -2,12 +2,20 @@ import { useState, type FormEvent } from 'react'
 import { MagnifyingGlassIcon, SpinnerGapIcon, BrainIcon, ArrowsClockwiseIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
+import { Panel, PanelBody, PanelHeader, PanelIcon, ContentWell } from '../ui/Panel'
 
 const KIND_LABEL: Record<string, string> = {
-  brief: 'brief',
-  asset_prompt: 'asset',
-  comment: 'comment',
-  canon: 'canon',
+  brief: 'Brief',
+  asset_prompt: 'Asset',
+  comment: 'Comment',
+  canon: 'Canon',
+}
+
+const KIND_CHIP: Record<string, string> = {
+  brief: 'bg-indigo/15 text-indigo-bright',
+  asset_prompt: 'bg-teal/15 text-teal-bright',
+  comment: 'bg-info/15 text-info',
+  canon: 'bg-warning/15 text-warning',
 }
 
 /**
@@ -55,11 +63,11 @@ export function ContextAsk({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="glass flex max-h-[42%] shrink-0 flex-col rounded-[16px]">
-      <div className="flex items-center gap-2 border-b border-white/8 px-5 py-3">
-        <span className="grid size-7 place-items-center rounded-[8px] bg-accent/15 text-teal-bright">
+    <Panel className="max-h-[min(42%,22rem)] min-h-0 shrink-0">
+      <PanelHeader>
+        <PanelIcon>
           <BrainIcon size={15} weight="fill" />
-        </span>
+        </PanelIcon>
         <p className="text-sm font-medium text-text">Ask this project</p>
         <button
           onClick={reindex}
@@ -70,10 +78,10 @@ export function ContextAsk({ projectId }: { projectId: string }) {
           {reindexing ? <SpinnerGapIcon size={12} className="animate-spin" /> : <ArrowsClockwiseIcon size={12} />}
           Reindex
         </button>
-      </div>
+      </PanelHeader>
 
-      <form onSubmit={ask} className="border-b border-white/8 p-3">
-        <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-[12px] bg-surface-2/60 p-2 transition focus-within:ring-1 focus-within:ring-teal/40">
+      <form onSubmit={ask} className="shrink-0 border-b border-white/8 p-4">
+        <ContentWell className="flex items-center gap-2 rounded-[12px] bg-surface-2/60 p-2 transition focus-within:ring-1 focus-within:ring-teal/40">
           <MagnifyingGlassIcon size={15} className="ml-1 text-text-dim" />
           <input
             value={q}
@@ -89,22 +97,22 @@ export function ContextAsk({ projectId }: { projectId: string }) {
           >
             {busy ? <SpinnerGapIcon size={13} className="animate-spin" /> : 'Ask'}
           </button>
-        </div>
+        </ContentWell>
         {(note || error) && (
-          <p className={`mx-auto mt-2 max-w-2xl text-xs ${error ? 'text-rose-300' : 'text-text-dim'}`}>
+          <p className={`mx-auto mt-2 max-w-2xl text-xs ${error ? 'text-danger' : 'text-teal-bright'}`}>
             {error ?? note}
           </p>
         )}
       </form>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <PanelBody density="dense" className="px-3 py-2">
         {result == null ? (
           <p className="px-2 py-6 text-center text-xs text-text-dim">
-            Ask a question to get an answer synthesized from the project's context.
+            Ask about this project — answers pull from briefs, canon, prompts, and comments.
           </p>
         ) : result.sources.length === 0 ? (
           <p className="px-2 py-6 text-center text-xs text-text-dim">
-            No relevant context found. Try Reindex if you just added assets.
+            No matching context yet. Add assets or reindex if you just updated the project.
           </p>
         ) : (
           <div className="mx-auto max-w-2xl space-y-3">
@@ -118,7 +126,11 @@ export function ContextAsk({ projectId }: { projectId: string }) {
               <ul className="space-y-1.5">
                 {result.sources.map((h, i) => (
                   <li key={i} className="flex items-start gap-2 rounded-[10px] bg-white/[0.03] px-2.5 py-2">
-                    <span className="mt-0.5 shrink-0 rounded-[6px] bg-white/8 px-1.5 py-0.5 text-[10px] font-medium text-text-dim">
+                    <span
+                      className={`mt-0.5 shrink-0 rounded-[6px] px-1.5 py-0.5 text-[10px] font-medium ${
+                        KIND_CHIP[h.source_kind] ?? 'bg-white/8 text-text-dim'
+                      }`}
+                    >
                       {KIND_LABEL[h.source_kind] ?? h.source_kind}
                     </span>
                     <p className="min-w-0 flex-1 text-xs text-text-muted">{h.content}</p>
@@ -131,7 +143,7 @@ export function ContextAsk({ projectId }: { projectId: string }) {
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </PanelBody>
+    </Panel>
   )
 }

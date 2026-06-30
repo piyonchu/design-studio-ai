@@ -2,6 +2,7 @@
 // proxy, so the httpOnly ds_session cookie is sent automatically.
 
 const BASE = '/api'
+const DEFAULT_TIMEOUT_MS = 30_000
 
 export class ApiError extends Error {
   status: number
@@ -11,11 +12,60 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+/** Turn thrown API/network errors into copy the UI can show as-is. */
+export function formatApiError(err: unknown, fallback = "That didn't work. Try again."): string {
+  if (err instanceof ApiError) {
+    if (err.status === 0) return err.message
+    if (err.status === 401) return 'Your session expired. Sign in again to continue.'
+    if (err.status === 403) {
+      return err.message || "You don't have permission for this. Ask a project owner if you need access."
+    }
+    if (err.status === 404) {
+      return err.message || "We couldn't find that — it may have been moved or deleted."
+    }
+    if (err.status === 429) {
+      return err.message || 'Too many requests. Wait a moment, then try again.'
+    }
+    if (err.status >= 500) {
+      return err.message || 'CanonForge hit a server error. Wait a moment and try again.'
+    }
+    return err.message || fallback
+  }
+  if (err instanceof TypeError) {
+    return "Can't reach CanonForge. Check your connection and try again."
+  }
+  return fallback
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<Response> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...fetchInit } = init ?? {}
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(input, { ...fetchInit, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(0, 'This took too long. Check your connection and try again.')
+    }
+    if (err instanceof TypeError) {
+      throw new ApiError(0, "Can't reach CanonForge. Check your connection and try again.")
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+  const { timeoutMs, ...fetchInit } = init ?? {}
+  const res = await fetchWithTimeout(`${BASE}${path}`, {
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
-    ...init,
+    timeoutMs,
+    ...fetchInit,
   })
   if (res.status === 204) return undefined as T
   const body = await res.json().catch(() => null)
@@ -190,7 +240,7 @@ export interface Asset {
   name: string | null // explicit display name; null → derive from role/prompt
   kind: string
   s3_key?: string // not sent by the API; use `url`. Kept for type compat.
-  url: string // stable, browser-usable image URL — use for <img src> / props.src
+  url: string // stable, browser-usable image URL for previews and tiles
   mime_type: string | null
   prompt: string | null
   role: string | null
@@ -394,11 +444,12 @@ export const uploadAsset = async (
   role?: string,
 ): Promise<Asset> => {
   const q = role ? `?role=${encodeURIComponent(role)}` : ''
-  const res = await fetch(`${BASE}/projects/${projectId}/assets/upload${q}`, {
+  const res = await fetchWithTimeout(`${BASE}/projects/${projectId}/assets/upload${q}`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'content-type': file.type || 'image/png' },
     body: file,
+    timeoutMs: 120_000,
   })
   const body = await res.json().catch(() => null)
   if (!res.ok) {
@@ -687,11 +738,12 @@ export async function downloadExport(
   assetIds: string[],
   target?: string,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/projects/${projectId}/export`, {
+  const res = await fetchWithTimeout(`${BASE}/projects/${projectId}/export`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ asset_ids: assetIds, target }),
+    timeoutMs: 120_000,
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)

@@ -285,7 +285,7 @@ export function FolderTree({
           body={
             pendingDelete.asset_count > 0
               ? `Its ${pendingDelete.asset_count} asset${pendingDelete.asset_count > 1 ? 's' : ''} will move to Unfiled — they're not deleted.`
-              : 'This folder is empty.'
+              : 'This folder is empty — nothing will move when you delete it.'
           }
           confirmLabel="Delete folder"
           tone="danger"

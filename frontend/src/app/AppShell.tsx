@@ -71,7 +71,7 @@ export function AppShell({
       <div className="app-aurora" />
 
       {/* Left icon rail */}
-      <aside className="glass fixed inset-y-3 left-3 z-20 flex w-16 flex-col items-center justify-between rounded-[16px] py-5">
+      <aside className="glass fixed inset-y-3 left-3 z-20 flex w-16 flex-col items-center justify-between rounded-[var(--radius-panel)] py-5">
         <div className="flex flex-col items-center gap-1">
           <Link
             to="/"
@@ -89,9 +89,9 @@ export function AppShell({
                 title={label}
                 aria-label={label}
                 aria-current={active ? 'page' : undefined}
-                className={`grid size-10 place-items-center rounded-[10px] transition ${
+                className={`grid size-10 place-items-center rounded-[10px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/40 ${
                   active
-                    ? 'bg-white/10 text-teal-bright'
+                    ? 'bg-teal/12 text-teal-bright ring-1 ring-teal/25'
                     : 'text-text-dim hover:bg-white/5 hover:text-text'
                 }`}
               >
@@ -104,14 +104,14 @@ export function AppShell({
           onClick={logout}
           title="Sign out"
           aria-label="Sign out"
-          className="grid size-10 place-items-center rounded-[10px] text-text-dim transition hover:bg-white/5 hover:text-text"
+          className="grid size-10 place-items-center rounded-[10px] text-text-dim transition hover:bg-white/5 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/40"
         >
           <SignOutIcon size={20} />
         </button>
       </aside>
 
       {/* Main column */}
-      <div className="relative z-10 pl-[5.5rem] pr-4">
+      <div className="shell-main relative z-10 pr-4">
         {/* Top bar */}
         <header className="flex items-center gap-4 py-4">
           {onSearch ? (
