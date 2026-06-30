@@ -751,7 +751,7 @@ export function AssetLibrary({
             }`}
           >
             <CheckSquareIcon size={14} weight={selecting ? 'fill' : 'regular'} />
-            Select
+            {selecting ? 'Done' : 'Select'}
           </button>
           <button
             onClick={pickFile}
@@ -1200,11 +1200,12 @@ export function AssetLibrary({
                     {/* QA gate: off-style flag (visual fit below the threshold) */}
                     {!selecting && a.style_fit != null && a.style_fit < api.STYLE_FIT_THRESHOLD && (
                       <span
-                        title={`Off-style — ${Math.round(a.style_fit * 100)}% visual match to approved assets`}
+                        // ponytail: cosine fit can be negative; clamp so the badge never reads "-4%"
+                        title={`Off-style — ${Math.max(0, Math.round(a.style_fit * 100))}% visual match to approved assets`}
                         className="absolute bottom-7 right-1.5 inline-flex items-center gap-1 rounded-[6px] bg-warning/85 px-1.5 py-0.5 text-[10px] font-semibold text-bg"
                       >
                         <WarningIcon size={11} weight="fill" />
-                        {Math.round(a.style_fit * 100)}%
+                        {Math.max(0, Math.round(a.style_fit * 100))}%
                       </span>
                     )}
 

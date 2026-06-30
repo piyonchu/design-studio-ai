@@ -134,9 +134,11 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!focused ? (
           <div className="grid flex-1 place-items-center px-6 text-center text-sm text-text-dim">
-            {queue.length === 0
-              ? 'Generate or derive assets on the board to review them here.'
-              : 'Pick a candidate from the list to review.'}
+            {loading
+              ? 'Loading review queue…'
+              : queue.length === 0
+                ? 'Generate or derive assets on the board to review them here.'
+                : 'Pick a candidate from the list to review.'}
           </div>
         ) : (
           <div className="flex min-h-0 flex-1">
