@@ -83,8 +83,8 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
 
   return (
     <Panel layout="split">
-      {/* Pending stack */}
-      <aside className="flex min-h-0 w-64 shrink-0 flex-col border-r border-white/8">
+      {/* Pending stack — hidden on phones (review auto-advances), narrower on tablet */}
+      <aside className="hidden min-h-0 w-52 shrink-0 flex-col border-r border-white/8 md:flex lg:w-64">
         <PanelHeader>
           <PanelIcon className="bg-warning/15 text-warning">
             <TrayIcon size={15} weight="fill" />
@@ -193,8 +193,8 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
               </p>
             </div>
 
-            {/* Discussion alongside the decision */}
-            <div className="flex w-80 shrink-0 flex-col border-l border-white/8 p-4">
+            {/* Discussion alongside the decision — only on wide screens */}
+            <div className="hidden w-80 shrink-0 flex-col border-l border-white/8 p-4 xl:flex">
               <CommentThread assetId={focused.id} />
             </div>
           </div>

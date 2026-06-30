@@ -155,9 +155,11 @@ export function AssetLibrary({
   const [offStyle, setOffStyle] = useState(false)
   // A3: the library is the hero; the generate bar is collapsed behind "+ New".
   const [showGen, setShowGen] = useState(false)
-  // The filter rail can collapse to reclaim board width (and is the first step
-  // toward a mobile drawer).
-  const [railOpen, setRailOpen] = useState(true)
+  // The filter rail can collapse to reclaim board width. Defaults open on
+  // desktop, collapsed on narrow viewports (where the board needs the room).
+  const [railOpen, setRailOpen] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 1024,
+  )
 
   // Multi-select
   const [selecting, setSelecting] = useState(false)
