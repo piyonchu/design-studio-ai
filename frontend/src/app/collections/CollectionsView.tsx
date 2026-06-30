@@ -141,7 +141,7 @@ export function CollectionsView({ projectId, vertical }: { projectId: string; ve
                   className="group relative overflow-hidden rounded-[12px] ring-1 ring-white/10"
                   title={a.derivation ?? a.prompt ?? a.role ?? ''}
                 >
-                  <img src={a.url} alt="" className="aspect-square w-full object-cover" />
+                  <img src={a.url} alt="" loading="lazy" decoding="async" className="aspect-square w-full object-cover" />
                   <button
                     onClick={() => removeItem(a.id)}
                     aria-label="Remove from pack"

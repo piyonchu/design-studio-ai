@@ -362,7 +362,7 @@ export function AssetInspector({
                   onClick={() => onNavigate(detail.base!.id)}
                   className="flex w-full items-center gap-2 rounded-[10px] p-1.5 text-left transition hover:bg-white/5"
                 >
-                  <img src={detail.base.url} alt="" className="size-12 rounded-[8px] object-cover ring-1 ring-white/10" />
+                  <img src={detail.base.url} alt="" loading="lazy" decoding="async" className="size-12 rounded-[8px] object-cover ring-1 ring-white/10" />
                   <span className="truncate text-xs text-text">{detail.base.role ?? detail.base.prompt ?? 'base'}</span>
                 </button>
               </div>
@@ -379,7 +379,7 @@ export function AssetInspector({
                       title={d.derivation ?? ''}
                       className="overflow-hidden rounded-[8px] ring-1 ring-white/10 transition hover:ring-teal"
                     >
-                      <img src={d.url} alt="" className="aspect-square w-full object-cover" />
+                      <img src={d.url} alt="" loading="lazy" decoding="async" className="aspect-square w-full object-cover" />
                     </button>
                   ))}
                 </div>

@@ -55,6 +55,36 @@ const STATUS_CHIP: Record<api.AssetStatus, { label: string; cls: string; Icon: I
   rejected: { label: 'Rejected', cls: 'bg-black/70 text-text-muted', Icon: XIcon },
 }
 
+// Rail building blocks — module-scoped so they keep a stable component identity
+// (defining them inside AssetLibrary remounted the whole rail on every keystroke).
+function FilterChip({ active, count, onClick, children }: {
+  active: boolean
+  count?: number
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-xs capitalize transition ${
+        active ? 'bg-teal/15 text-teal-bright' : 'text-text-dim hover:bg-white/5 hover:text-text'
+      }`}
+    >
+      <span className="flex-1 truncate">{children}</span>
+      {count != null && <span className="text-[10px] tabular-nums text-text-dim">{count}</span>}
+    </button>
+  )
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mb-4">
+      <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-text-dim">{title}</p>
+      {children}
+    </div>
+  )
+}
+
 /**
  * The smart asset board — generate / upload / derive plus a filter rail
  * (role · status · source · collection), free-text search, status visual
@@ -520,35 +550,6 @@ export function AssetLibrary({
     }
   }
 
-  // ── Rail building blocks ────────────────────────────────────────────────────
-  function FilterChip({ active, count, onClick, children }: {
-    active: boolean
-    count?: number
-    onClick: () => void
-    children: ReactNode
-  }) {
-    return (
-      <button
-        onClick={onClick}
-        className={`flex w-full items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-xs capitalize transition ${
-          active ? 'bg-teal/15 text-teal-bright' : 'text-text-dim hover:bg-white/5 hover:text-text'
-        }`}
-      >
-        <span className="flex-1 truncate">{children}</span>
-        {count != null && <span className="text-[10px] tabular-nums text-text-dim">{count}</span>}
-      </button>
-    )
-  }
-
-  function Section({ title, children }: { title: string; children: ReactNode }) {
-    return (
-      <div className="mb-4">
-        <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-text-dim">{title}</p>
-        {children}
-      </div>
-    )
-  }
-
   return (
     <div className="glass flex min-h-0 flex-1 overflow-hidden rounded-[16px]">
       {/* Filter rail */}
@@ -937,7 +938,7 @@ export function AssetLibrary({
                   title={`${s.prompt ?? s.role ?? ''} · ${Math.round(s.score * 100)}% match`}
                   className="size-9 shrink-0 overflow-hidden rounded-[7px] ring-1 ring-white/15 transition hover:ring-teal"
                 >
-                  <img src={s.url} alt="" className="size-full object-cover" />
+                  <img src={s.url} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
                 </button>
               ))}
             </div>
@@ -1011,7 +1012,13 @@ export function AssetLibrary({
                         />
                       </div>
                     ) : (
-                      <img src={a.url} alt={a.prompt ?? a.role ?? ''} className="aspect-square w-full object-cover" />
+                      <img
+                        src={a.url}
+                        alt={a.prompt ?? a.role ?? ''}
+                        loading="lazy"
+                        decoding="async"
+                        className="aspect-square w-full object-cover"
+                      />
                     )}
 
                     {/* Select checkbox (select mode) */}
@@ -1026,7 +1033,7 @@ export function AssetLibrary({
                     )}
 
                     {!selecting && (
-                      <span className="absolute left-1.5 top-1.5 rounded-[6px] bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur">
+                      <span className="absolute left-1.5 top-1.5 rounded-[6px] bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white/90">
                         {a.source_kind}
                       </span>
                     )}
@@ -1063,14 +1070,14 @@ export function AssetLibrary({
                           setInspectId(a.id)
                         }}
                         aria-label={`Inspect ${api.displayName(a)}`}
-                        className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-[6px] bg-black/55 text-white/90 opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                        className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-[6px] bg-black/70 text-white/90 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                       >
                         <MagnifyingGlassIcon size={13} />
                       </button>
                     )}
 
                     {!selecting && a.status === 'candidate' && (
-                      <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-black/45 p-1.5 opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-within:opacity-100">
+                      <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-black/65 p-1.5 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
                         {canApprove && (
                           <button
                             onClick={(e) => {

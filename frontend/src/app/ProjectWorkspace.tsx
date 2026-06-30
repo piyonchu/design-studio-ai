@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType } from 'react'
+import { Suspense, lazy, useEffect, useState, type ComponentType } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeftIcon,
@@ -9,17 +9,23 @@ import {
   StackIcon,
   ClockCounterClockwiseIcon,
   ShieldCheckIcon,
+  SpinnerGapIcon,
 } from '@phosphor-icons/react'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
 import { AssetLibrary } from './assets/AssetLibrary'
-import { ReviewQueue } from './assets/ReviewQueue'
-import { LineageView } from './assets/LineageView'
-import { CanonView } from './canon/CanonView'
-import { ContextAsk } from './canon/ContextAsk'
-import { CollectionsView } from './collections/CollectionsView'
-import { ActivityView } from './activity/ActivityView'
-import { AccessView } from './AccessView'
+
+// The Board is the default tab → eager. The rest split into their own chunks,
+// loaded the first time their tab is opened.
+const ReviewQueue = lazy(() => import('./assets/ReviewQueue').then((m) => ({ default: m.ReviewQueue })))
+const LineageView = lazy(() => import('./assets/LineageView').then((m) => ({ default: m.LineageView })))
+const CanonView = lazy(() => import('./canon/CanonView').then((m) => ({ default: m.CanonView })))
+const ContextAsk = lazy(() => import('./canon/ContextAsk').then((m) => ({ default: m.ContextAsk })))
+const CollectionsView = lazy(() =>
+  import('./collections/CollectionsView').then((m) => ({ default: m.CollectionsView })),
+)
+const ActivityView = lazy(() => import('./activity/ActivityView').then((m) => ({ default: m.ActivityView })))
+const AccessView = lazy(() => import('./AccessView').then((m) => ({ default: m.AccessView })))
 
 type Tab = 'canon' | 'assets' | 'review' | 'lineage' | 'collections' | 'activity' | 'access'
 
@@ -112,25 +118,33 @@ export function ProjectWorkspace() {
           </p>
         )}
         <div className="flex min-h-0 flex-1">
-          {projectId &&
-            (tab === 'canon' ? (
-              <div className="flex min-h-0 flex-1 flex-col gap-3">
-                <ContextAsk projectId={projectId} />
-                <CanonView projectId={projectId} vertical={project?.vertical} />
+          <Suspense
+            fallback={
+              <div className="grid flex-1 place-items-center text-text-dim">
+                <SpinnerGapIcon size={20} className="animate-spin" />
               </div>
-            ) : tab === 'review' ? (
-              <ReviewQueue projectId={projectId} canApprove={canApprove} />
-            ) : tab === 'lineage' ? (
-              <LineageView projectId={projectId} />
-            ) : tab === 'collections' ? (
-              <CollectionsView projectId={projectId} vertical={project?.vertical} />
-            ) : tab === 'activity' ? (
-              <ActivityView projectId={projectId} />
-            ) : tab === 'access' ? (
-              <AccessView projectId={projectId} />
-            ) : (
-              <AssetLibrary projectId={projectId} vertical={project?.vertical} canApprove={canApprove} />
-            ))}
+            }
+          >
+            {projectId &&
+              (tab === 'canon' ? (
+                <div className="flex min-h-0 flex-1 flex-col gap-3">
+                  <ContextAsk projectId={projectId} />
+                  <CanonView projectId={projectId} vertical={project?.vertical} />
+                </div>
+              ) : tab === 'review' ? (
+                <ReviewQueue projectId={projectId} canApprove={canApprove} />
+              ) : tab === 'lineage' ? (
+                <LineageView projectId={projectId} />
+              ) : tab === 'collections' ? (
+                <CollectionsView projectId={projectId} vertical={project?.vertical} />
+              ) : tab === 'activity' ? (
+                <ActivityView projectId={projectId} />
+              ) : tab === 'access' ? (
+                <AccessView projectId={projectId} />
+              ) : (
+                <AssetLibrary projectId={projectId} vertical={project?.vertical} canApprove={canApprove} />
+              ))}
+          </Suspense>
         </div>
       </div>
     </div>

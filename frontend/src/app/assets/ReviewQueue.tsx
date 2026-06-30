@@ -100,7 +100,7 @@ export function ReviewQueue({ projectId, canApprove = true }: { projectId: strin
                   a.id === focusId ? 'bg-teal/12 ring-1 ring-teal/40' : 'hover:bg-white/5'
                 }`}
               >
-                <img src={a.url} alt="" className="size-11 shrink-0 rounded-[8px] object-cover ring-1 ring-white/10" />
+                <img src={a.url} alt="" loading="lazy" decoding="async" className="size-11 shrink-0 rounded-[8px] object-cover ring-1 ring-white/10" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs text-text">{api.displayName(a)}</span>
                   <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-text-dim">

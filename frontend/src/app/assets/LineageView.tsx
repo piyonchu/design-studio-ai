@@ -17,6 +17,87 @@ const STATUS_DOT: Record<api.AssetStatus, string> = {
   rejected: 'bg-white/30',
 }
 
+type LineageCtx = {
+  childrenOf: Map<string, api.Asset[]>
+  isStale: (a: api.Asset) => boolean
+  regenId: string | null
+  onInspect: (id: string) => void
+  onRegenerate: (a: api.Asset) => void
+  onKeep: (id: string) => void
+}
+
+// One lineage node + its subtree. Module-scoped (stable component identity) so
+// the tree reconciles in place instead of remounting on each state change.
+function LineageNode({ asset, seen, ctx }: { asset: api.Asset; seen: Set<string>; ctx: LineageCtx }) {
+  if (seen.has(asset.id)) return null
+  const next = new Set(seen).add(asset.id)
+  const kids = ctx.childrenOf.get(asset.id) ?? []
+  const stale = ctx.isStale(asset)
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-3">
+        <figure
+          onClick={() => ctx.onInspect(asset.id)}
+          className={`group relative w-44 shrink-0 cursor-pointer overflow-hidden rounded-[12px] ring-1 transition ${
+            stale ? 'ring-amber-400/50' : 'ring-white/10 hover:ring-white/25'
+          }`}
+          title={asset.derivation ?? asset.prompt ?? asset.role ?? ''}
+        >
+          <div className="flex items-center gap-2.5 p-2">
+            <img src={asset.url} alt="" loading="lazy" decoding="async" className="size-12 shrink-0 rounded-[8px] object-cover ring-1 ring-white/10" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs text-text">{api.displayName(asset)}</p>
+              <p className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-text-dim">
+                <span className={`size-1.5 rounded-full ${STATUS_DOT[asset.status]}`} />
+                {asset.status.replace('_', ' ')} · {asset.source_kind}
+              </p>
+            </div>
+            <MagnifyingGlassIcon size={13} className="text-text-dim opacity-0 transition group-hover:opacity-100" />
+          </div>
+          {stale && (
+            <span className="absolute right-1.5 top-1.5 rounded-[5px] bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-medium text-amber-200">
+              stale
+            </span>
+          )}
+        </figure>
+
+        {stale && (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              onClick={() => ctx.onRegenerate(asset)}
+              disabled={ctx.regenId != null}
+              title="Regenerate under the current canon"
+              className="inline-flex items-center gap-1 rounded-[8px] border border-white/10 px-2 py-1 text-[11px] text-text-dim transition hover:text-text disabled:opacity-50"
+            >
+              {ctx.regenId === asset.id ? (
+                <SpinnerGapIcon size={12} className="animate-spin" />
+              ) : (
+                <ArrowsClockwiseIcon size={12} />
+              )}
+              Regenerate
+            </button>
+            <button
+              onClick={() => ctx.onKeep(asset.id)}
+              title="Keep as-is under the current canon"
+              className="rounded-[8px] border border-white/10 px-2 py-1 text-[11px] text-text-dim transition hover:text-text"
+            >
+              Keep
+            </button>
+          </div>
+        )}
+      </div>
+
+      {kids.length > 0 && (
+        <div className="ml-6 mt-2 flex flex-col gap-2 border-l border-white/10 pl-4">
+          {kids.map((k) => (
+            <LineageNode key={k.id} asset={k} seen={next} ctx={ctx} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /**
  * Lineage view — the moat made visible. Lays out roots → derivatives from the
  * project graph, and surfaces canon drift: assets generated under an older
@@ -137,75 +218,13 @@ export function LineageView({ projectId }: { projectId: string }) {
     }
   }
 
-  function Node({ asset, depth, seen }: { asset: api.Asset; depth: number; seen: Set<string> }) {
-    if (seen.has(asset.id)) return null
-    const next = new Set(seen).add(asset.id)
-    const kids = childrenOf.get(asset.id) ?? []
-    const stale = isStale(asset)
-    return (
-      <div className="flex flex-col">
-        <div className="flex items-center gap-3">
-          <figure
-            onClick={() => setInspectId(asset.id)}
-            className={`group relative w-44 shrink-0 cursor-pointer overflow-hidden rounded-[12px] ring-1 transition ${
-              stale ? 'ring-amber-400/50' : 'ring-white/10 hover:ring-white/25'
-            }`}
-            title={asset.derivation ?? asset.prompt ?? asset.role ?? ''}
-          >
-            <div className="flex items-center gap-2.5 p-2">
-              <img src={asset.url} alt="" className="size-12 shrink-0 rounded-[8px] object-cover ring-1 ring-white/10" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs text-text">{api.displayName(asset)}</p>
-                <p className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-text-dim">
-                  <span className={`size-1.5 rounded-full ${STATUS_DOT[asset.status]}`} />
-                  {asset.status.replace('_', ' ')} · {asset.source_kind}
-                </p>
-              </div>
-              <MagnifyingGlassIcon size={13} className="text-text-dim opacity-0 transition group-hover:opacity-100" />
-            </div>
-            {stale && (
-              <span className="absolute right-1.5 top-1.5 rounded-[5px] bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-medium text-amber-200">
-                stale
-              </span>
-            )}
-          </figure>
-
-          {stale && (
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                onClick={() => regenerate(asset)}
-                disabled={regenId != null}
-                title="Regenerate under the current canon"
-                className="inline-flex items-center gap-1 rounded-[8px] border border-white/10 px-2 py-1 text-[11px] text-text-dim transition hover:text-text disabled:opacity-50"
-              >
-                {regenId === asset.id ? (
-                  <SpinnerGapIcon size={12} className="animate-spin" />
-                ) : (
-                  <ArrowsClockwiseIcon size={12} />
-                )}
-                Regenerate
-              </button>
-              <button
-                onClick={() => keepOne(asset.id)}
-                title="Keep as-is under the current canon"
-                className="rounded-[8px] border border-white/10 px-2 py-1 text-[11px] text-text-dim transition hover:text-text"
-              >
-                Keep
-              </button>
-            </div>
-          )}
-        </div>
-
-        {kids.length > 0 && (
-          <div className="ml-6 mt-2 flex flex-col gap-2 border-l border-white/10 pl-4">
-            {kids.map((k) => (
-              <Node key={k.id} asset={k} depth={depth + 1} seen={next} />
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
+  // Stable ctx for the module-level LineageNode — keeps the recursive tree from
+  // remounting on every regen/inspect state change (it re-renders in place).
+  const nodeCtx = useMemo<LineageCtx>(
+    () => ({ childrenOf, isStale, regenId, onInspect: setInspectId, onRegenerate: regenerate, onKeep: keepOne }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [childrenOf, isStale, regenId],
+  )
 
   return (
     <div className="glass flex min-h-0 flex-1 flex-col rounded-[16px]">
@@ -249,7 +268,7 @@ export function LineageView({ projectId }: { projectId: string }) {
         ) : (
           <div className="flex flex-col gap-4">
             {roots.map((r) => (
-              <Node key={r.id} asset={r} depth={0} seen={new Set()} />
+              <LineageNode key={r.id} asset={r} seen={new Set()} ctx={nodeCtx} />
             ))}
           </div>
         )}
