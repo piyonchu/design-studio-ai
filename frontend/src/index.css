@@ -45,6 +45,8 @@
   --spacing-shell-rail: 5.5rem;
 
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 html,
@@ -135,11 +137,63 @@ body {
   }
 }
 
+/* ── Landing entrance choreography ──────────────────────────────────────────
+   One orchestrated page-load (the hero canon panel assembling itself), not
+   fade-on-scroll-every-section. Keyframes animate FROM the hidden state so the
+   resting/base style stays visible: if animations never run (crawler, JS off,
+   reduced motion), content still shows. Stagger via a `--i` index custom prop. */
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes draw-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.hero-rise {
+  animation: fade-rise 0.7s var(--ease-out-expo) backwards;
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+/* Asset tiles populate after the panel — "one reference, a whole set". */
+.hero-tile {
+  animation: fade-scale 0.55s var(--ease-out-quint) backwards;
+  animation-delay: calc(340ms + var(--i, 0) * 70ms);
+}
+/* Lineage connectors draw in last — "lineage stays visible". */
+.hero-connector {
+  transform-origin: left;
+  animation: draw-x 0.6s var(--ease-out-quart) backwards;
+  animation-delay: calc(720ms + var(--i, 0) * 90ms);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
+    /* Zero the delay too, so a staggered reveal can't hold content hidden. */
     animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
     transition-duration: 0.001ms !important;
   }
 }
