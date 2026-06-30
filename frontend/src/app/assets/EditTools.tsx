@@ -13,6 +13,7 @@ import {
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { InpaintDialog } from './InpaintDialog'
+import { PaintDialog } from './PaintDialog'
 
 /**
  * Deterministic edits (Pro pipeline B1) — free, instant, model-free transforms.
@@ -31,6 +32,7 @@ export function EditTools({
   const [w, setW] = useState('')
   const [h, setH] = useState('')
   const [inpainting, setInpainting] = useState(false)
+  const [painting, setPainting] = useState(false)
 
   async function run(label: string, op: api.EditOp) {
     if (busy) return
@@ -74,14 +76,28 @@ export function EditTools({
         Edit
         <span className="text-[10px]">· free · saves a new version</span>
         <button
-          onClick={() => setInpainting(true)}
+          onClick={() => setPainting(true)}
           className="ml-auto inline-flex items-center gap-1 rounded-[7px] border border-teal/30 bg-teal/10 px-2 py-1 text-[11px] text-teal-bright transition hover:bg-teal/15"
+        >
+          <PaintBrushIcon size={12} weight="fill" />
+          Paint
+        </button>
+        <button
+          onClick={() => setInpainting(true)}
+          className="inline-flex items-center gap-1 rounded-[7px] border border-teal/30 bg-teal/10 px-2 py-1 text-[11px] text-teal-bright transition hover:bg-teal/15"
         >
           <PaintBrushIcon size={12} weight="fill" />
           Edit a region
         </button>
       </div>
 
+      {painting && (
+        <PaintDialog
+          asset={asset}
+          onClose={() => setPainting(false)}
+          onSaved={(updated) => onChanged(updated)}
+        />
+      )}
       {inpainting && (
         <InpaintDialog
           asset={asset}
