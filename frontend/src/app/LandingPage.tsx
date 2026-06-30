@@ -129,33 +129,37 @@ export function LandingPage() {
       <div className="app-aurora" />
 
       <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
-        <Link to="/" className="flex items-center gap-2.5" aria-label="CanonForge home">
+        <Link
+          to="/"
+          className="flex items-center gap-2.5 rounded-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60"
+          aria-label="CanonForge home"
+        >
           <span className="grid size-10 place-items-center rounded-[12px] bg-teal/15 text-teal-bright ring-1 ring-teal/25">
             <SparkleIcon size={21} weight="fill" />
           </span>
           <span className="text-sm font-semibold tracking-tight text-text">CanonForge</span>
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-text-dim md:flex" aria-label="Landing navigation">
-          <a href="#loop" className="transition hover:text-text">
+          <a href="#loop" className="rounded-[6px] transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60">
             Loop
           </a>
-          <a href="#verticals" className="transition hover:text-text">
+          <a href="#verticals" className="rounded-[6px] transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60">
             Verticals
           </a>
-          <a href="#export" className="transition hover:text-text">
+          <a href="#export" className="rounded-[6px] transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60">
             Export
           </a>
         </nav>
         <div className="flex items-center gap-2">
           <Link
             to="/login?mode=login"
-            className="hidden rounded-[10px] px-3 py-2 text-sm font-medium text-text-dim transition hover:bg-white/5 hover:text-text sm:inline-flex"
+            className="hidden rounded-[10px] px-3 py-2 text-sm font-medium text-text-dim transition hover:bg-white/5 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60 sm:inline-flex"
           >
             Sign in
           </Link>
           <Link
             to="/login?mode=signup"
-            className="group inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-teal px-4 py-2.5 text-sm font-semibold text-bg transition hover:brightness-105 active:translate-y-px"
+            className="group inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-teal px-4 py-2.5 text-sm font-semibold text-bg transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60 active:translate-y-px"
           >
             Create workspace
             <ArrowRightIcon
@@ -192,7 +196,7 @@ export function LandingPage() {
             <div style={{ '--i': 3 } as CSSProperties} className="hero-rise mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
                 to="/login?mode=signup"
-                className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-teal px-5 py-3 text-sm font-semibold text-bg transition hover:brightness-105 active:translate-y-px"
+                className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-teal px-5 py-3 text-sm font-semibold text-bg transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60 active:translate-y-px"
               >
                 Start with a reference
                 <ArrowRightIcon
@@ -203,7 +207,7 @@ export function LandingPage() {
               </Link>
               <a
                 href="#loop"
-                className="inline-flex min-h-12 items-center justify-center rounded-[12px] border border-white/10 px-5 py-3 text-sm font-semibold text-text-dim transition hover:bg-white/5 hover:text-text"
+                className="inline-flex min-h-12 items-center justify-center rounded-[12px] border border-white/10 px-5 py-3 text-sm font-semibold text-text-dim transition hover:bg-white/5 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60"
               >
                 See the workflow
               </a>
@@ -316,7 +320,7 @@ export function LandingPage() {
             {verticals.map(({ title, body, icon: Icon, accent, span }) => (
               <article
                 key={title}
-                className={`glass rounded-[20px] p-5 transition-transform duration-300 ease-out will-change-transform hover:-translate-y-1 ${span}`}
+                className={`glass rounded-[20px] p-5 transition-transform duration-300 ease-out hover:-translate-y-1 ${span}`}
               >
                 <div
                   className={`mb-5 grid size-10 place-items-center rounded-[12px] ${
@@ -344,7 +348,7 @@ export function LandingPage() {
               <div className="mt-7">
                 <Link
                   to="/login?mode=signup"
-                  className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-teal px-5 py-3 text-sm font-semibold text-bg transition hover:brightness-105 active:translate-y-px"
+                  className="group inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-teal px-5 py-3 text-sm font-semibold text-bg transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60 active:translate-y-px"
                 >
                   Create your first canon
                   <ArrowRightIcon
@@ -389,10 +393,13 @@ export function LandingPage() {
       <footer className="relative z-10 mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-text-dim sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
         <p>CanonForge remembers your art direction.</p>
         <div className="flex gap-4">
-          <Link to="/login?mode=login" className="transition hover:text-text">
+          <Link to="/login?mode=login" className="rounded-[6px] transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60">
             Sign in
           </Link>
-          <Link to="/login?mode=signup" className="font-medium text-teal-bright transition hover:text-teal">
+          <Link
+            to="/login?mode=signup"
+            className="rounded-[6px] font-medium text-teal-bright transition hover:text-teal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo/60"
+          >
             Create workspace
           </Link>
         </div>
