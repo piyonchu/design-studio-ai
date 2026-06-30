@@ -20,6 +20,38 @@ pub fn router() -> Router<AppState> {
         .route("/assets/:id/style-fit", get(style_fit))
 }
 
+/// Visual style-fit of an asset vs the project's *approved* assets: the max
+/// cosine similarity of its pixel embedding to any approved asset's, plus how
+/// many approved peers it was compared against. `(None, 0)` when there's nothing
+/// to compare to (no approved peers / no embeddings). Reused by the endpoint and
+/// the QA gate (auto-scoring on generation).
+pub(crate) async fn style_fit_score(
+    pool: &sqlx::PgPool,
+    asset_id: Uuid,
+    project_id: Uuid,
+) -> Result<(Option<f64>, i64), AppError> {
+    // MAX(...) is NULL when there's no other approved asset with a visual
+    // embedding to compare against, so column 0 must decode as Option.
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "WITH q AS (SELECT embedding_visual FROM visual_embeddings WHERE asset_id = $1)
+         SELECT MAX(1 - (e.embedding_visual <=> q.embedding_visual))::float8,
+                COUNT(*)::int8
+         FROM visual_embeddings e
+         JOIN assets a ON a.id = e.asset_id, q
+         WHERE a.project_id = $2 AND a.status = 'approved' AND a.id <> $1
+           AND e.embedding_visual IS NOT NULL AND q.embedding_visual IS NOT NULL",
+    )
+    .bind(asset_id)
+    .bind(project_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(match row {
+        Some((Some(s), n)) if n > 0 => (Some(s), n),
+        _ => (None, 0),
+    })
+}
+
 /// How well an asset matches the project's *approved* style via pixel embedding.
 async fn style_fit(
     State(state): State<AppState>,
@@ -33,26 +65,7 @@ async fn style_fit(
     let project_id = project_id.ok_or(AppError::NotFound)?;
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Viewer).await?;
 
-    // MAX(...) is NULL when there's no other approved asset with a visual
-    // embedding to compare against, so column 0 must decode as Option.
-    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
-        "WITH q AS (SELECT embedding_visual FROM visual_embeddings WHERE asset_id = $1)
-         SELECT MAX(1 - (e.embedding_visual <=> q.embedding_visual))::float8,
-                COUNT(*)::int8
-         FROM visual_embeddings e
-         JOIN assets a ON a.id = e.asset_id, q
-         WHERE a.project_id = $2 AND a.status = 'approved' AND a.id <> $1
-           AND e.embedding_visual IS NOT NULL AND q.embedding_visual IS NOT NULL",
-    )
-    .bind(id)
-    .bind(project_id)
-    .fetch_optional(&state.pool)
-    .await?;
-
-    let (score, basis) = match row {
-        Some((Some(s), n)) if n > 0 => (Some(s), n),
-        _ => (None, 0),
-    };
+    let (score, basis) = style_fit_score(&state.pool, id, project_id).await?;
     Ok(Json(serde_json::json!({ "score": score, "basis": basis })))
 }
 
