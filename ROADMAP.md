@@ -40,6 +40,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | — | Cost guardrail — credit floor + per-workspace daily gen cap (env-tunable) | ✅ |
 | Pro · A3 | Library-as-hero — generate bar collapsed behind "New asset" | ✅ |
 | Pro · QA gate | Embedding QA gate — cache style_fit on gen; off-style badge + filter | ✅ |
+| Pro · B3 | Manual paint editor — brush/fill/eyedropper, save as version (free) | ✅ |
 | Pro · A1 | **Folder tree** — per-project asset folders (tree, drag/menu move, counts), coexist with collections | ✅ |
 | Pro · A2 | **Per-asset version history + rollback + diff** (the headline) — `asset_versions` + head pointer; regenerate appends a version; restore is non-destructive; before/after slider | ✅ |
 | Pro · A3 | Reposition UI/landing — library/folders/review as the hero | ⏳ |

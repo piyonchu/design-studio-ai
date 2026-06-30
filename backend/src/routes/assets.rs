@@ -26,7 +26,7 @@ pub fn router() -> Router<AppState> {
         .route("/projects/:project_id/assets/:base_id/derive", post(derive))
         .route("/assets/:id", get(get_one).patch(update_asset).delete(delete_one))
         .route("/assets/:id/file", get(file))
-        .route("/assets/:id/versions", get(list_versions))
+        .route("/assets/:id/versions", get(list_versions).post(save_version))
         .route("/assets/:id/versions/:vid/restore", post(restore_version))
         .route("/assets/:id/regenerate", post(regenerate))
         .route("/assets/:id/edit", post(edit_asset))
@@ -932,6 +932,72 @@ async fn edit_asset(
         .await?;
     crate::mirror::save(project_id, asset.id, &out_mime, &out_bytes);
     ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&out_bytes)).await;
+    Ok(Json(with_url(asset)))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SaveVersionParams {
+    /// Change note for the version timeline (default "Hand-painted").
+    #[serde(default)]
+    note: Option<String>,
+}
+
+/// Record arbitrary client-rendered image bytes as a **new version** (A2). Used
+/// by the B3 manual paint editor (and reusable by any client-side edit): the
+/// canvas produces a PNG, the server just stores it + appends a version. Body =
+/// raw image bytes, `Content-Type` = its mime. Editor+, non-destructive.
+async fn save_version(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<Uuid>,
+    Query(params): Query<SaveVersionParams>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<Asset>, AppError> {
+    let row: Option<(Uuid,)> = sqlx::query_as("SELECT project_id FROM assets WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let (project_id,) = row.ok_or(AppError::NotFound)?;
+    auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
+
+    if body.is_empty() {
+        return Err(AppError::BadRequest("empty image".into()));
+    }
+    if body.len() > MAX_UPLOAD {
+        return Err(AppError::BadRequest("image too large (max 10MB)".into()));
+    }
+    let mime = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .filter(|m| m.starts_with("image/"))
+        .unwrap_or("image/png")
+        .to_string();
+    if !is_raster(&mime) {
+        return Err(AppError::BadRequest("only raster images can be saved as a version".into()));
+    }
+    // Reject undecodable bytes so we never store a broken version.
+    image::load_from_memory(&body)
+        .map_err(|e| AppError::BadRequest(format!("cannot decode image: {e}")))?;
+
+    let new_key = if state.storage.configured() {
+        let key = format!("projects/{project_id}/assets/{}", Uuid::new_v4());
+        state.storage.put(&key, &body, &mime).await?;
+        key
+    } else {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&body);
+        format!("data:{mime};base64,{b64}")
+    };
+
+    let note = params.note.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or("Hand-painted");
+    record_version(&state.pool, id, &new_key, &mime, None, Some(note), Some(user.id)).await?;
+
+    let asset = sqlx::query_as::<_, Asset>(&format!("SELECT {ASSET_COLS} FROM assets WHERE id = $1"))
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+    crate::mirror::save(project_id, asset.id, &mime, &body);
+    ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&body)).await;
     Ok(Json(with_url(asset)))
 }
 

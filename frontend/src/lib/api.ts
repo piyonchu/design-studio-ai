@@ -437,6 +437,32 @@ export const inpaintAsset = (assetId: string, mask: string, prompt: string) =>
     body: JSON.stringify({ mask, prompt }),
   })
 
+/**
+ * B3 manual paint: store client-rendered image bytes (a painted PNG) as a new
+ * version. Raw bytes body, like uploadAsset. `note` labels the version timeline.
+ */
+export const saveAssetVersion = async (
+  assetId: string,
+  blob: Blob,
+  note?: string,
+): Promise<Asset> => {
+  const q = note ? `?note=${encodeURIComponent(note)}` : ''
+  const res = await fetch(`${BASE}/assets/${assetId}/versions${q}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': blob.type || 'image/png' },
+    body: blob,
+  })
+  const body = await res.json().catch(() => null)
+  if (!res.ok) {
+    const msg =
+      (body && typeof body === 'object' && 'error' in body && String(body.error)) ||
+      `save failed (${res.status})`
+    throw new ApiError(res.status, msg)
+  }
+  return body as Asset
+}
+
 /** Upload a base/reference image. Raw bytes body, not multipart. */
 export const uploadAsset = async (
   projectId: string,
