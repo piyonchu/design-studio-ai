@@ -75,8 +75,11 @@ fn inpaint_workflow(base_name: &str, mask_name: &str, prompt: &str, seed: u64) -
         "neg": {"class_type": "CLIPTextEncode",
                 "inputs": {"text": "blurry, low quality, artifacts", "clip": ["ckpt", 1]}},
         "base": {"class_type": "LoadImage", "inputs": {"image": base_name}},
+        // The brush mask is opaque (alpha) where the edit should happen, on a
+        // transparent background. LoadImage splits alpha into its MASK output as
+        // (1 - alpha), so InvertMask restores it to painted = 1.0 = edit region.
         "maskimg": {"class_type": "LoadImage", "inputs": {"image": mask_name}},
-        "mask": {"class_type": "ImageToMask", "inputs": {"image": ["maskimg", 0], "channel": "red"}},
+        "mask": {"class_type": "InvertMask", "inputs": {"mask": ["maskimg", 1]}},
         "imc": {"class_type": "InpaintModelConditioning", "inputs": {
             "positive": ["pos", 0], "negative": ["neg", 0], "vae": ["ckpt", 2],
             "pixels": ["base", 0], "mask": ["mask", 0], "noise_mask": true}},
@@ -212,16 +215,29 @@ mod tests {
             return;
         }
         let base = png(256, 256, |_, _| [120, 120, 120, 255]);
-        // white square in the middle = the region to inpaint
+        // Match the real brush: teal + opaque inside the region, fully
+        // transparent outside (the edit signal is alpha, not colour).
         let mask = png(256, 256, |x, y| {
             if (85..171).contains(&x) && (85..171).contains(&y) {
-                [255, 255, 255, 255]
+                [45, 212, 191, 255]
             } else {
-                [0, 0, 0, 255]
+                [0, 0, 0, 0]
             }
         });
         let out = inpaint(&base, &mask, "a glowing red gem").await.expect("inpaint ok");
         assert!(out.len() > 1000, "expected real image bytes, got {}", out.len());
         assert_eq!(&out[1..4], b"PNG", "expected a PNG");
+
+        // The mask must actually take effect: centre (inside) changes, corner
+        // (outside) stays close to the flat base — this is what caught the
+        // red-vs-alpha mask bug.
+        let res = image::load_from_memory(&out).expect("decode result").to_rgb8();
+        let d = |p: image::Rgb<u8>, b: [u8; 3]| {
+            (0..3).map(|i| (p[i] as i32 - b[i] as i32).abs()).sum::<i32>()
+        };
+        let corner = d(*res.get_pixel(4, 4), [120, 120, 120]);
+        let center = d(*res.get_pixel(128, 128), [120, 120, 120]);
+        assert!(center > 30, "masked region should change (center delta {center})");
+        assert!(corner < 30, "unmasked region should stay (corner delta {corner})");
     }
 }

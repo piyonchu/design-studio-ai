@@ -26,6 +26,7 @@ export function InpaintDialog({
   const [prompt, setPrompt] = useState('')
   const [brush, setBrush] = useState(28)
   const [hasMask, setHasMask] = useState(false)
+  const [useCanon, setUseCanon] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,7 +67,7 @@ export function InpaintDialog({
     setError(null)
     try {
       const mask = canvasRef.current!.toDataURL('image/png')
-      const updated = await api.inpaintAsset(asset.id, mask, prompt.trim())
+      const updated = await api.inpaintAsset(asset.id, mask, prompt.trim(), useCanon)
       onSaved(updated)
       onClose()
     } catch (e) {
@@ -165,6 +166,20 @@ export function InpaintDialog({
                 Inpaint
               </button>
             </div>
+            {/* Fold the project's canon style into the edit. Off for off-canon
+                assets or changes the canon would fight (e.g. a recolor). */}
+            <label className="mt-2 flex items-center gap-2 text-xs text-text-dim">
+              <input
+                type="checkbox"
+                checked={useCanon}
+                onChange={(e) => setUseCanon(e.target.checked)}
+                className="size-3.5 accent-teal"
+              />
+              Apply canon style
+              <span className="text-[10px] text-text-dim/70">
+                · matches the project’s look — turn off for off-canon or exact-colour edits
+              </span>
+            </label>
           </div>
         </>
       )}
