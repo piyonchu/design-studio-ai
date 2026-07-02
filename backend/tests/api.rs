@@ -911,3 +911,148 @@ async fn generation_conditions_on_an_approved_exemplar() {
     let chosen = chosen.expect("generation recorded an exemplar_id");
     assert!(exemplar_ids.contains(&chosen), "conditioned on an approved exemplar");
 }
+
+/// B3 (`POST /assets/:id/versions`, client-rendered bytes) + the embedding QA
+/// gate (`style_fit` scoring at creation + the `?off_style` board filter).
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn save_version_and_style_qa_gate() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"QA\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    let png = |color: [u8; 4]| {
+        let img = image::RgbaImage::from_pixel(8, 8, image::Rgba(color));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(img).write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        buf.into_inner()
+    };
+    let upload = |bytes: Vec<u8>| {
+        let (router, cookie, pid) = (router.clone(), cookie.clone(), pid.clone());
+        async move {
+            let req = Request::builder()
+                .method("POST")
+                .uri(format!("/projects/{pid}/assets/upload"))
+                .header("content-type", "image/png")
+                .header("cookie", &cookie)
+                .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 50000))))
+                .body(Body::from(bytes))
+                .unwrap();
+            let resp = router.oneshot(req).await.unwrap();
+            assert_eq!(resp.status(), StatusCode::CREATED, "upload");
+            let b = to_bytes(resp.into_body(), usize::MAX).await.unwrap().to_vec();
+            field(&b, "id").to_owned()
+        }
+    };
+
+    // Approve one uploaded asset so later creations have a peer to score against.
+    let approved = upload(png([200, 40, 40, 255])).await;
+    let (st, _b, _) = send(
+        &router,
+        "PATCH",
+        &format!("/assets/{approved}"),
+        Some(&cookie),
+        Some("{\"status\":\"approved\"}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "approve peer");
+
+    // ── QA gate: a fresh generation gets a style_fit score vs the approved peer.
+    let (st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/projects/{pid}/assets"),
+        Some(&cookie),
+        Some("{\"prompt\":\"a knight\",\"count\":1}"),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED, "generate");
+    let gen: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    let gen_fit = gen[0]["style_fit"].as_f64();
+    assert!(gen_fit.is_some(), "generation scored a style_fit vs the approved peer: {gen}");
+
+    // The off-style filter returns only sub-threshold assets (never the peer
+    // itself, which has no score, and nothing >= 0.5 by default).
+    let (st, b, _) = send(
+        &router,
+        "GET",
+        &format!("/projects/{pid}/assets?off_style=true"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "off_style filter");
+    let page: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    for item in page["items"].as_array().unwrap() {
+        let fit = item["style_fit"].as_f64().expect("filtered assets carry a score");
+        assert!(fit < 0.5, "off_style returns only sub-threshold assets (got {fit})");
+    }
+
+    // ── B3: store client-rendered bytes as a new version.
+    let base = upload(png([40, 40, 200, 255])).await;
+    let painted = png([10, 200, 10, 255]);
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/assets/{base}/versions?note=Hand-painted%20test"))
+        .header("content-type", "image/png")
+        .header("cookie", &cookie)
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 50000))))
+        .body(Body::from(painted.clone()))
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "save painted version");
+
+    let (_st, b, _) = send(&router, "GET", &format!("/assets/{base}/versions"), Some(&cookie), None).await;
+    let versions: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert_eq!(versions.as_array().unwrap().len(), 2, "paint appended a version");
+    assert_eq!(versions[0]["change_note"], "Hand-painted test");
+
+    // The head now serves exactly the painted bytes.
+    let (_st, head, _) = send(&router, "GET", &format!("/assets/{base}/file"), Some(&cookie), None).await;
+    assert_eq!(head, painted, "head bytes are the client-rendered image");
+
+    // Garbage bytes are rejected without touching history.
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/assets/{base}/versions"))
+        .header("content-type", "image/png")
+        .header("cookie", &cookie)
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 50000))))
+        .body(Body::from(vec![1u8, 2, 3, 4]))
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "undecodable bytes rejected");
+    let (_st, b, _) = send(&router, "GET", &format!("/assets/{base}/versions"), Some(&cookie), None).await;
+    let versions: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert_eq!(versions.as_array().unwrap().len(), 2, "failed save left history untouched");
+}
