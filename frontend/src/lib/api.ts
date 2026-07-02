@@ -431,10 +431,13 @@ export const editAsset = (assetId: string, op: EditOp) =>
  * `mask` is a PNG data URL, opaque where the region should change. Returns the
  * asset with its new head version. Free in mock mode (`EDIT_MOCK`).
  */
-export const inpaintAsset = (assetId: string, mask: string, prompt: string) =>
+export const inpaintAsset = (assetId: string, mask: string, prompt: string, useCanon = true) =>
   request<Asset>(`/assets/${assetId}/inpaint`, {
     method: 'POST',
-    body: JSON.stringify({ mask, prompt }),
+    body: JSON.stringify({ mask, prompt, use_canon: useCanon }),
+    // A real (local ComfyUI) inpaint is a heavy GPU op — the first call loads
+    // SDXL, then ~15-45s per edit. Well past the 30s default, so allow 3 min.
+    timeoutMs: 180_000,
   })
 
 /**

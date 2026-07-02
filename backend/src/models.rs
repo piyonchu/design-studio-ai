@@ -423,6 +423,15 @@ pub struct RegenerateAsset {
 pub struct InpaintRequest {
     pub mask: String,
     pub prompt: String,
+    /// Fold the project's canon style into the edit prompt. Default true; turn
+    /// off for off-canon assets or explicit changes the canon would fight
+    /// (e.g. a recolor vs a fixed palette rule).
+    #[serde(default = "default_true")]
+    pub use_canon: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 // ── Collections ───────────────────────────────────────────────────────────────

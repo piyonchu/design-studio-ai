@@ -27,13 +27,18 @@ pub fn is_mock() -> bool {
 /// an image whose painted (opaque + bright) pixels mark the region to change.
 /// Returns new full-image PNG bytes.
 pub async fn inpaint(base: &[u8], mask: &[u8], prompt: &str) -> Result<GeneratedImage, AppError> {
+    // Local ComfyUI (Fooocus inpaint) takes precedence when configured — real,
+    // free, on-box. Falls through to the mock for dev/CI/demo when it isn't.
+    if let Some(_url) = crate::ai::comfy::local_url() {
+        let bytes = crate::ai::comfy::inpaint(base, mask, prompt).await?;
+        return Ok(GeneratedImage { bytes, mime: "image/png".into() });
+    }
     if is_mock() {
         return mock_inpaint(base, mask, prompt);
     }
-    // Real provider deferred — decision (fal.ai vs Replicate) made at wiring
-    // time, plus a new key + per-edit spend. Keep the seam honest until then.
+    // No local server and mock disabled → keep the seam honest.
     Err(AppError::ServiceUnavailable(
-        "inpaint provider not configured (set EDIT_MOCK=true for the local mock)".into(),
+        "inpaint provider not configured (set LOCAL_AI_URL or EDIT_MOCK=true)".into(),
     ))
 }
 

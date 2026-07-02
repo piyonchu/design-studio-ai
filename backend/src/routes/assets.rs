@@ -1035,7 +1035,28 @@ async fn inpaint(
     }
     let mask_bytes = decode_data_url(&body.mask)?;
 
-    let img = ai::edit::inpaint(&base_bytes, &mask_bytes, prompt).await?;
+    // Optionally fold the project's canon (render style, palette, outline…) into
+    // the edit prompt so the region matches the body of work — the same
+    // compile_prompt the generate/derive paths use. Off by request for off-canon
+    // assets or changes the canon would fight (e.g. a recolor vs a palette rule).
+    // The model gets the compiled text; the version keeps the raw prompt.
+    let style_prompt = if body.use_canon {
+        let canon: Option<Value> = sqlx::query_scalar(
+            "SELECT data FROM canon WHERE project_id = $1 ORDER BY version DESC LIMIT 1",
+        )
+        .bind(project_id)
+        .fetch_optional(&state.pool)
+        .await?;
+        let vertical: String = sqlx::query_scalar("SELECT vertical FROM projects WHERE id = $1")
+            .bind(project_id)
+            .fetch_one(&state.pool)
+            .await?;
+        compile_prompt(prompt, canon.as_ref(), &vertical)
+    } else {
+        prompt.to_string()
+    };
+
+    let img = ai::edit::inpaint(&base_bytes, &mask_bytes, &style_prompt).await?;
 
     let new_key = if state.storage.configured() {
         let key = format!("projects/{project_id}/assets/{}", Uuid::new_v4());
