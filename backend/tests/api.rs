@@ -926,7 +926,23 @@ async fn edit_intents_recolor_remove_and_validation() {
     let versions: serde_json::Value = serde_json::from_slice(&b).unwrap();
     assert_eq!(versions[0]["change_note"], "Removed region content");
 
-    // ── validation: replace without a prompt / recolor without a colour → 400.
+    // ── refine: keeps content, modifies per prompt (mock path here) → version.
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/inpaint"),
+        Some(&cookie),
+        Some(&format!(
+            "{{\"mask\":\"{mask_data}\",\"mode\":\"refine\",\"prompt\":\"make it glow\",\"strength\":0.5}}"
+        )),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "refine");
+    let (_st, b, _) = send(&router, "GET", &format!("/assets/{aid}/versions"), Some(&cookie), None).await;
+    let versions: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert_eq!(versions[0]["change_note"], "Refined: make it glow");
+
+    // ── validation: replace/refine without a prompt / recolor without a colour → 400.
     let (st, _b, _) = send(
         &router,
         "POST",
@@ -936,6 +952,15 @@ async fn edit_intents_recolor_remove_and_validation() {
     )
     .await;
     assert_eq!(st, StatusCode::BAD_REQUEST, "replace needs a prompt");
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/inpaint"),
+        Some(&cookie),
+        Some(&format!("{{\"mask\":\"{mask_data}\",\"mode\":\"refine\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "refine needs a prompt");
     let (st, _b, _) = send(
         &router,
         "POST",

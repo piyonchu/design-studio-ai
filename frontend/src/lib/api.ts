@@ -427,19 +427,29 @@ export const editAsset = (assetId: string, op: EditOp) =>
   request<Asset>(`/assets/${assetId}/edit`, { method: 'POST', body: JSON.stringify(op) })
 
 /** What a masked edit does to the region — each intent takes the right pipeline. */
-export type EditIntent = 'replace' | 'remove' | 'recolor'
+export type EditIntent = 'replace' | 'refine' | 'remove' | 'recolor'
 
 /**
  * Masked region edit (B2): `mask` is a PNG data URL, opaque where the region
  * should change. Intents: `replace` regenerates the region per `prompt`
- * (diffusion); `remove` erases it and continues the background (diffusion, no
- * prompt); `recolor` shifts the region's colour to `color` keeping shading —
- * deterministic, instant, free. Returns the asset with its new head version.
+ * (diffusion); `refine` keeps the region's content and modifies it per
+ * `prompt` at `strength` 0.15–0.95 (diffusion over the original); `remove`
+ * erases it and continues the background (diffusion, no prompt); `recolor`
+ * shifts the region's colour to `color` keeping shading — deterministic,
+ * instant, free (`matchColor` = rough brushing OK, only pixels matching the
+ * area's dominant colour move). Returns the asset with its new head version.
  */
 export const inpaintAsset = (
   assetId: string,
   mask: string,
-  opts: { mode?: EditIntent; prompt?: string; color?: string; useCanon?: boolean } = {},
+  opts: {
+    mode?: EditIntent
+    prompt?: string
+    color?: string
+    matchColor?: boolean
+    strength?: number
+    useCanon?: boolean
+  } = {},
 ) =>
   request<Asset>(`/assets/${assetId}/inpaint`, {
     method: 'POST',
@@ -448,6 +458,8 @@ export const inpaintAsset = (
       mode: opts.mode ?? 'replace',
       prompt: opts.prompt,
       color: opts.color,
+      match_color: opts.matchColor ?? true,
+      strength: opts.strength,
       use_canon: opts.useCanon ?? true,
     }),
     // A real (local ComfyUI) inpaint is a heavy GPU op — the first call loads

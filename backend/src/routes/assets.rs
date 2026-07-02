@@ -1035,7 +1035,7 @@ async fn inpaint(
                 .color
                 .as_deref()
                 .ok_or_else(|| AppError::BadRequest("color required for recolor".into()))?;
-            let bytes = crate::edit::recolor_masked(&base_bytes, &mask_bytes, color)?;
+            let bytes = crate::edit::recolor_masked(&base_bytes, &mask_bytes, color, body.match_color)?;
             (
                 ai::images::GeneratedImage { bytes, mime: "image/png".into() },
                 format!("recolor to {color}"),
@@ -1050,8 +1050,53 @@ async fn inpaint(
             let prompt = "empty area, seamless continuation of the surrounding background, nothing here";
             let negative =
                 "object, item, character, figure, text, watermark, blurry, low quality, artifacts";
-            let img = ai::edit::inpaint(&base_bytes, &mask_bytes, prompt, negative, true).await?;
+            let img =
+                ai::edit::inpaint(&base_bytes, &mask_bytes, prompt, negative, true, 1.0, false)
+                    .await?;
             (img, "remove".into(), "Removed region content".into())
+        }
+        // Refine → keep the region's content and modify it per the prompt
+        // ("make it glow", "more battle-worn"). The model SEES the original
+        // pixels (no neutralize) and only partially re-noises them (`strength`),
+        // so structure survives while the prompt steers the change — the
+        // input-anchoring that ruins replace is exactly what refine wants.
+        EditIntent::Refine => {
+            let prompt = body
+                .prompt
+                .as_deref()
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+                .ok_or_else(|| AppError::BadRequest("prompt required".into()))?;
+            crate::moderation::check_prompt(prompt)?;
+            if !ai::edit::is_mock() {
+                crate::guardrail::check_can_spend(&state, project_id, 1).await?;
+            }
+            let strength = body.strength.unwrap_or(0.6).clamp(0.15, 0.95);
+
+            let canon: Option<Value> = if body.use_canon {
+                sqlx::query_scalar(
+                    "SELECT data FROM canon WHERE project_id = $1 ORDER BY version DESC LIMIT 1",
+                )
+                .bind(project_id)
+                .fetch_optional(&state.pool)
+                .await?
+            } else {
+                None
+            };
+            let mut positive = prompt.to_string();
+            if let Some(style) = canon.as_ref().and_then(canon_style_text) {
+                positive.push_str(&format!(", {style} style"));
+            }
+            let mut negative = String::from("blurry, low quality, artifacts");
+            if let Some(neg) = canon.as_ref().and_then(canon_negative_text) {
+                negative.push_str(", ");
+                negative.push_str(&neg);
+            }
+            let img = ai::edit::inpaint(
+                &base_bytes, &mask_bytes, &positive, &negative, true, strength, true,
+            )
+            .await?;
+            (img, prompt.to_string(), format!("Refined: {prompt}"))
         }
         // Replace → diffusion inpaint from the user's prompt. The prompt stays
         // REGION-LOCAL: no vertical render hint (that describes a whole asset,
@@ -1090,7 +1135,10 @@ async fn inpaint(
                 negative.push_str(", ");
                 negative.push_str(&neg);
             }
-            let img = ai::edit::inpaint(&base_bytes, &mask_bytes, &positive, &negative, false).await?;
+            let img = ai::edit::inpaint(
+                &base_bytes, &mask_bytes, &positive, &negative, false, 1.0, false,
+            )
+            .await?;
             (img, prompt.to_string(), format!("Inpainted: {prompt}"))
         }
     };

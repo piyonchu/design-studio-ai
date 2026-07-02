@@ -167,10 +167,30 @@ fn parse_format(format: &str) -> Result<ImageFormat, AppError> {
 // instead *keeps every pixel's shading and texture* and swaps only hue/
 // saturation toward the target — exact, instant, free.
 
+/// Below this saturation a pixel is "greyish" — outlines, shadows, whites.
+const SAT_FLOOR: f32 = 0.12;
+/// Circular hue distance (degrees) within which a pixel counts as "the same
+/// colour" as the brushed area's dominant colour. Tight on purpose: shading a
+/// colour (multiplying it down) keeps its hue, so an object's lit + shaded
+/// pixels share a hue — while neighbours like brown (dark orange, ~27°) vs
+/// yellow (~50°) sit ~23° apart and must NOT merge.
+const HUE_TOLERANCE: f32 = 20.0;
+
 /// Recolor the masked region of `base` toward `target` (`#rrggbb`), preserving
 /// per-pixel luminance (shading, highlights, outlines survive). `mask`: painted
-/// = opaque + bright pixels, same convention as inpaint. Returns PNG bytes.
-pub fn recolor_masked(base: &[u8], mask: &[u8], target: &str) -> Result<Vec<u8>, AppError> {
+/// = opaque + bright pixels, same convention as inpaint.
+///
+/// `match_color` = the Photoshop "replace colour" behaviour: rough brushing is
+/// fine — the dominant colour under the brush is detected, and only pixels
+/// matching it shift. Background caught by a sloppy brush and near-grey pixels
+/// (black outlines, shadows) survive. Off → everything under the brush shifts.
+/// Returns PNG bytes.
+pub fn recolor_masked(
+    base: &[u8],
+    mask: &[u8],
+    target: &str,
+    match_color: bool,
+) -> Result<Vec<u8>, AppError> {
     let (tr, tg, tb) = parse_hex(target)?;
     let (th, ts, _) = rgb_to_hsl(tr, tg, tb);
 
@@ -186,29 +206,80 @@ pub fn recolor_masked(base: &[u8], mask: &[u8], target: &str) -> Result<Vec<u8>,
     } else {
         image::imageops::resize(&mask_img.to_rgba8(), w, h, image::imageops::FilterType::Nearest)
     };
+    let painted = |x: u32, y: u32| {
+        let m = mask_rgba.get_pixel(x, y);
+        let lum = 0.299 * m[0] as f32 + 0.587 * m[1] as f32 + 0.114 * m[2] as f32;
+        m[3] > 32 && lum > 96.0
+    };
+
+    // Dominant hue under the brush: a saturation-weighted circular histogram
+    // over the masked pixels. Near-grey pixels don't vote (their hue is noise).
+    let mut any_masked = false;
+    let source_hue: Option<f32> = if match_color {
+        let mut bins = [0f32; 36];
+        for y in 0..h {
+            for x in 0..w {
+                if painted(x, y) {
+                    any_masked = true;
+                    let p = out.get_pixel(x, y);
+                    if p[3] == 0 {
+                        continue;
+                    }
+                    let (hh, s, _) = rgb_to_hsl(p[0], p[1], p[2]);
+                    if s >= SAT_FLOOR {
+                        bins[((hh / 10.0) as usize).min(35)] += s;
+                    }
+                }
+            }
+        }
+        let (best, weight) =
+            bins.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map(|(i, w)| (i, *w)).unwrap();
+        // A grey/white-dominant brush has nothing to match — fall back to
+        // recolouring everything under it.
+        (weight > 0.0).then(|| best as f32 * 10.0 + 5.0)
+    } else {
+        None
+    };
+
+    let hue_dist = |a: f32, b: f32| {
+        let d = (a - b).abs() % 360.0;
+        d.min(360.0 - d)
+    };
 
     let mut touched = 0u64;
     for y in 0..h {
         for x in 0..w {
-            let m = mask_rgba.get_pixel(x, y);
-            let lum = 0.299 * m[0] as f32 + 0.587 * m[1] as f32 + 0.114 * m[2] as f32;
-            if m[3] > 32 && lum > 96.0 {
-                let p = out.get_pixel_mut(x, y);
-                if p[3] == 0 {
-                    continue; // fully transparent pixels have no colour to change
-                }
-                let (_, s, l) = rgb_to_hsl(p[0], p[1], p[2]);
-                // Target hue outright; pull saturation toward the target's so a
-                // grey region can *become* coloured, but shading (L) is kept.
-                let ns = s + (ts - s) * 0.85;
-                let (r, g, b) = hsl_to_rgb(th, ns, l);
-                (p[0], p[1], p[2]) = (r, g, b);
-                touched += 1;
+            if !painted(x, y) {
+                continue;
             }
+            any_masked = true;
+            let p = out.get_pixel_mut(x, y);
+            if p[3] == 0 {
+                continue; // fully transparent pixels have no colour to change
+            }
+            let (hh, s, l) = rgb_to_hsl(p[0], p[1], p[2]);
+            if let Some(src) = source_hue {
+                // Match mode: only pixels that read as the source colour move;
+                // greys (outlines/shadows) and off-colour background survive.
+                if s < SAT_FLOOR || hue_dist(hh, src) > HUE_TOLERANCE {
+                    continue;
+                }
+            }
+            // Target hue outright; pull saturation toward the target's so a
+            // grey region can *become* coloured, but shading (L) is kept.
+            let ns = s + (ts - s) * 0.85;
+            let (r, g, b) = hsl_to_rgb(th, ns, l);
+            (p[0], p[1], p[2]) = (r, g, b);
+            touched += 1;
         }
     }
-    if touched == 0 {
+    if !any_masked {
         return Err(AppError::BadRequest("mask is empty — paint the region to recolor".into()));
+    }
+    if touched == 0 {
+        return Err(AppError::BadRequest(
+            "nothing under the brush matches the area's main colour — brush over the part to recolor, or turn off colour matching".into(),
+        ));
     }
 
     let mut buf = Cursor::new(Vec::new());
@@ -437,7 +508,7 @@ mod tests {
                 m.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
             }
         }
-        let out = recolor_masked(&base, &png_of(m), "#22aa33").unwrap();
+        let out = recolor_masked(&base, &png_of(m), "#22aa33", true).unwrap();
         let res = image::load_from_memory(&out).unwrap().to_rgba8();
 
         // Masked pixels became green (G dominates), unmasked stayed yellow.
@@ -454,12 +525,51 @@ mod tests {
     }
 
     #[test]
+    fn smart_recolor_spares_background_and_outlines_under_a_sloppy_brush() {
+        // Scene: brown background, yellow object with a black outline pixel.
+        let mut img = image::RgbaImage::from_pixel(8, 8, image::Rgba([92, 64, 40, 255]));
+        for y in 2..6 {
+            for x in 2..6 {
+                img.put_pixel(x, y, image::Rgba([230, 200, 40, 255])); // yellow object
+            }
+        }
+        img.put_pixel(2, 2, image::Rgba([12, 12, 12, 255])); // black outline pixel
+        let base = png_of(img);
+        // Sloppy brush: the object plus a fat margin of background around it
+        // (what a rough human brush actually looks like).
+        let mut m = image::RgbaImage::from_pixel(8, 8, image::Rgba([0, 0, 0, 0]));
+        for y in 1..7 {
+            for x in 1..7 {
+                m.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
+            }
+        }
+
+        let out = recolor_masked(&base, &png_of(m), "#2244cc", true).unwrap();
+        let res = image::load_from_memory(&out).unwrap().to_rgba8();
+
+        // Yellow object → blue (dominant colour matched)…
+        let p = res.get_pixel(4, 4);
+        assert!(p[2] > p[0] && p[2] > p[1], "object turned blue: {:?}", p.0);
+        // …but the brown background caught inside the sloppy brush is untouched
+        // (brown is only ~23° of hue away from yellow — must not merge)…
+        assert_eq!(res.get_pixel(1, 1).0, [92, 64, 40, 255], "background inside brush survives");
+        // …and the black outline survives too.
+        assert_eq!(res.get_pixel(2, 2).0, [12, 12, 12, 255], "outline survives");
+
+        // With matching OFF the background shifts as well (old behaviour).
+        let out = recolor_masked(&base, &png_of(image::RgbaImage::from_pixel(8, 8, image::Rgba([255, 255, 255, 255]))), "#2244cc", false).unwrap();
+        let res = image::load_from_memory(&out).unwrap().to_rgba8();
+        let bg = res.get_pixel(0, 0);
+        assert!(bg[2] > bg[0], "match off recolours everything: {:?}", bg.0);
+    }
+
+    #[test]
     fn recolor_rejects_bad_color_and_empty_mask() {
         let base = sample_png();
         let empty_mask = png_of(image::RgbaImage::from_pixel(4, 2, image::Rgba([0, 0, 0, 0])));
         let full_mask = png_of(image::RgbaImage::from_pixel(4, 2, image::Rgba([255, 255, 255, 255])));
-        assert!(recolor_masked(&base, &full_mask, "not-a-color").is_err());
-        assert!(recolor_masked(&base, &empty_mask, "#22aa33").is_err());
+        assert!(recolor_masked(&base, &full_mask, "not-a-color", true).is_err());
+        assert!(recolor_masked(&base, &empty_mask, "#22aa33", true).is_err());
     }
 
     #[test]

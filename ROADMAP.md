@@ -45,7 +45,7 @@ setup + gotchas: [HANDOFF.md](HANDOFF.md).
 | Pro · A2 | **Per-asset version history + rollback + diff** (the headline) — `asset_versions` + head pointer; regenerate appends a version; restore is non-destructive; before/after slider | ✅ |
 | Pro · A3 | Reposition UI/landing — library/folders/review as the hero | ⏳ |
 | Pro · B1 | **Deterministic edits** — free, instant, model-free (crop/resize/flip/rotate/recolor/bg-remove/convert); each edit = a new version | ✅ |
-| Pro · B2 | **Masked/inpaint edit** — brush-a-region UX + `ai::edit` seam; real local provider (ComfyUI/SDXL); **per-intent routing**: recolor = deterministic (exact/free), remove = Fooocus background-fill, replace = plain-SDXL prompt-driven; neutralize-mask + GrowMask + true negative channel (all validated live) | ✅ |
+| Pro · B2 | **Masked/inpaint edit** — brush-a-region UX + `ai::edit` seam; real local provider (ComfyUI/SDXL); **per-intent routing**: recolor = deterministic w/ colour-matching (rough brush OK), remove = Fooocus background-fill, replace = plain-SDXL prompt-driven, refine = keep-content modify-per-prompt w/ strength; neutralize-mask + GrowMask + true negative channel (all validated live) | ✅ |
 | Pro · C | **Permissions** — per-project role overrides + reviewer gate (editors submit, reviewers approve); layered on workspace roles | ✅ |
 | Pro · D1 | **Smartest-exemplar pick** — condition generation on the approved exemplar whose embedding best matches the prompt (was newest-wins); no spend | ✅ |
 | Pro · D2/D3 | ControlNet / per-project LoRA — deepest moat | 💡 (spend-gated; needs go-ahead) |

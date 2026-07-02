@@ -81,6 +81,7 @@ fn inpaint_workflow(
     prompt: &str,
     negative: &str,
     harmonize: bool,
+    denoise: f32,
     seed: u64,
 ) -> Value {
     let sampler_model = if harmonize { json!(["apply", 0]) } else { json!(["ckpt", 0]) };
@@ -113,7 +114,7 @@ fn inpaint_workflow(
             "model": sampler_model, "seed": seed, "steps": 20, "cfg": 7.0,
             "sampler_name": "euler", "scheduler": "normal",
             "positive": ["imc", 0], "negative": ["imc", 1],
-            "latent_image": ["imc", 2], "denoise": 1.0}},
+            "latent_image": ["imc", 2], "denoise": denoise}},
         "dec": {"class_type": "VAEDecode", "inputs": {"samples": ["ks", 0], "vae": ["ckpt", 2]}},
         "save": {"class_type": "SaveImage",
                  "inputs": {"images": ["dec", 0], "filename_prefix": "canonforge_inpaint"}},
@@ -200,6 +201,7 @@ pub async fn inpaint(
     prompt: &str,
     negative: &str,
     harmonize: bool,
+    denoise: f32,
 ) -> Result<Vec<u8>, AppError> {
     let url = local_url()
         .ok_or_else(|| AppError::ServiceUnavailable("LOCAL_AI_URL not set".into()))?;
@@ -208,7 +210,7 @@ pub async fn inpaint(
     let mask_name = upload_image(&url, &format!("cf_mask_{tag}.png"), mask).await?;
     let seed = u64::from_le_bytes(Uuid::new_v4().as_bytes()[..8].try_into().unwrap());
     let pid =
-        submit(&url, inpaint_workflow(&base_name, &mask_name, prompt, negative, harmonize, seed))
+        submit(&url, inpaint_workflow(&base_name, &mask_name, prompt, negative, harmonize, denoise, seed))
             .await?;
     let filename = poll_output(&url, &pid).await?;
     fetch_output(&url, &filename).await
@@ -254,7 +256,7 @@ mod tests {
                 [0, 0, 0, 0]
             }
         });
-        let out = inpaint(&base, &mask, "a glowing red gem", "blurry, low quality", false)
+        let out = inpaint(&base, &mask, "a glowing red gem", "blurry, low quality", false, 1.0)
             .await
             .expect("inpaint ok");
         assert!(out.len() > 1000, "expected real image bytes, got {}", out.len());
