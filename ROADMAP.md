@@ -167,7 +167,9 @@ Pick assets / a collection → zip + `manifest.json` (generic), sprite atlas, th
 naming) with pass/fail before download.
 
 ## Known follow-ups / debt
+*(refreshed 2026-07-02 — stale items pruned: deterministic recolor shipped as a B1 edit op; the exemplar feedback loop + smartest-pick (D1) shipped; the inspector tech-check stub was superseded by the export checks.)*
 - Prompt polish: custom-instruction identity guard; label canon style fields; clean the double-negative in negatives.
-- Deterministic recolor (the `assets.method` column is reserved for it — generative recolor drifts identity, per the spike).
-- Approved assets don't yet feed back into the canon as exemplars.
-- Tech-check details in the inspector (alpha present, dimensions) are stubs.
+- **Version storage growth** — every regenerate/edit/paint stores a full inline copy in Neon (0.5 GB free). Before a real-AI demo: flip on **R2** (env-only, see [DEPLOY.md](DEPLOY.md)) and/or add a keep-last-N version pruner.
+- Activity feed doesn't include **version events** (regenerate/restore/edit/paint) — "v3 restored by X" entries would strengthen the pipeline story.
+- Comments show the author's email; should prefer the display name (like Team/Access do).
+- **Spend-gated** (fal.ai decided; needs key + budget go-ahead): B2 real inpaint → D2 ControlNet → D3 per-project LoRA. See [PRO_PIPELINE_PLAN.md](PRO_PIPELINE_PLAN.md) §8.
