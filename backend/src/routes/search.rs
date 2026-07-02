@@ -200,7 +200,10 @@ async fn load_image_bytes(state: &AppState, asset: &Asset) -> Option<Vec<u8>> {
 }
 
 /// Index every image asset missing a text or visual embedding (covers imports,
-/// legacy rows, and deploy mirror re-import).
+/// legacy rows, and deploy mirror re-import) — or embedded under a DIFFERENT
+/// model than the active one (covers switching embedders, e.g. caption-space →
+/// local pixel-CLIP: the spaces aren't comparable, so stale-model rows must be
+/// re-embedded, not kept).
 async fn backfill(
     State(state): State<AppState>,
     user: AuthUser,
@@ -215,10 +218,14 @@ async fn backfill(
              OR a.id IN (
                     SELECT asset_id FROM visual_embeddings
                     WHERE embedding_text IS NULL OR embedding_visual IS NULL
+                       OR model_text   IS DISTINCT FROM $2
+                       OR model_visual IS DISTINCT FROM $3
                 )
            )"
     ))
     .bind(project_id)
+    .bind(embeddings::model_tag_text())
+    .bind(embeddings::model_tag_visual())
     .fetch_all(&state.pool)
     .await?;
     let mut indexed = 0;

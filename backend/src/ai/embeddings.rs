@@ -58,6 +58,50 @@ fn visual_model() -> String {
         .unwrap_or_else(|| DEFAULT_VISUAL_MODEL.to_string())
 }
 
+/// The local pixel-CLIP server (LOCAL_AI_SETUP §3, ViT-L-14 on :8199). When set
+/// it takes precedence for the VISUAL side: it embeds actual pixels (not the
+/// caption) in CLIP's joint text/image space, so prompt↔image cosine — the
+/// smartest-exemplar pick, style-fit, off-style QA — measures what the art
+/// *looks like*. Trailing slash trimmed; None when unset/empty.
+pub fn local_clip_url() -> Option<String> {
+    std::env::var("LOCAL_CLIP_URL")
+        .ok()
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+}
+
+const LOCAL_CLIP_TAG: &str = "clip-vit-l14-local";
+
+/// POST to the local CLIP server (`/embed/image` or `/embed/text`) with the
+/// same disk caching as the OpenRouter embed paths.
+async fn embed_local_clip(
+    path: &str,
+    payload: Value,
+    dim: usize,
+    cache_parts: &[&str],
+    namespace: &str,
+) -> Option<Vec<f32>> {
+    let base = local_clip_url()?;
+    let ck = cache::key(cache_parts);
+    if let Some(hit) = cache::get(namespace, &ck) {
+        return parse_csv(&hit);
+    }
+    let resp = client().post(format!("{base}{path}")).json(&payload).send().await.ok()?;
+    if !resp.status().is_success() {
+        tracing::warn!(status = %resp.status(), path, "local clip embed failed");
+        return None;
+    }
+    let v: Value = resp.json().await.ok()?;
+    let vec: Vec<f32> =
+        v["embedding"].as_array()?.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect();
+    if vec.len() != dim {
+        tracing::warn!(got = vec.len(), want = dim, "local clip dim mismatch");
+        return None;
+    }
+    cache::put(namespace, &ck, &vec_csv(&vec));
+    Some(vec)
+}
+
 fn client() -> &'static reqwest::Client {
     static C: OnceLock<reqwest::Client> = OnceLock::new();
     C.get_or_init(|| reqwest::Client::builder().timeout(Duration::from_secs(60)).build().expect("client"))
@@ -68,7 +112,13 @@ pub fn model_tag_text() -> String {
 }
 
 pub fn model_tag_visual() -> String {
-    if embed_mock() { "mock-pixel-v1".to_string() } else { visual_model() }
+    if local_clip_url().is_some() {
+        LOCAL_CLIP_TAG.to_string()
+    } else if embed_mock() {
+        "mock-pixel-v1".to_string()
+    } else {
+        visual_model()
+    }
 }
 
 /// Legacy alias used by semantic-context rows.
@@ -243,6 +293,20 @@ pub async fn embed_image(bytes: &[u8], mime: &str, dim: usize) -> Option<Vec<f32
     if bytes.is_empty() {
         return None;
     }
+    // Local pixel-CLIP takes precedence (like the other local-AI seams): true
+    // pixel embeddings, free, on-box.
+    if local_clip_url().is_some() {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+        let sha = bytes_sha(bytes);
+        return embed_local_clip(
+            "/embed/image",
+            json!({ "image": b64 }),
+            dim,
+            &[LOCAL_CLIP_TAG, &dim.to_string(), "image", &sha],
+            "embed-visual",
+        )
+        .await;
+    }
     if embed_mock() {
         return embed_image_mock(bytes, dim);
     }
@@ -265,6 +329,17 @@ pub async fn embed_image(bytes: &[u8], mime: &str, dim: usize) -> Option<Vec<f32
 pub async fn embed_query_visual_space(text: &str, dim: usize) -> Option<Vec<f32>> {
     if text.trim().is_empty() {
         return None;
+    }
+    // CLIP's text tower shares the image space — true cross-modal search.
+    if local_clip_url().is_some() {
+        return embed_local_clip(
+            "/embed/text",
+            json!({ "text": text }),
+            dim,
+            &[LOCAL_CLIP_TAG, &dim.to_string(), "query", text],
+            "embed-visual-query",
+        )
+        .await;
     }
     if embed_mock() {
         return embed_mock_vec(text, dim);
