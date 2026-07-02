@@ -17,18 +17,21 @@ function ago(iso: string): string {
 
 const ROW_BG = {
   asset: 'hover:bg-teal/8',
+  version: 'hover:bg-sky-400/8',
   comment: 'hover:bg-indigo/8',
   canon: 'hover:bg-warning/8',
 } as const
 
 const KIND_CHIP = {
   asset: 'bg-teal/15 text-teal-bright',
+  version: 'bg-sky-400/15 text-sky-300',
   comment: 'bg-indigo/15 text-indigo-bright',
   canon: 'bg-warning/15 text-warning',
 } as const
 
 const KIND_LABEL = {
   asset: 'Asset',
+  version: 'Version',
   comment: 'Comment',
   canon: 'Canon',
 } as const

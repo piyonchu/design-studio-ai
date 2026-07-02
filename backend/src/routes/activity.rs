@@ -15,8 +15,9 @@ pub fn router() -> Router<AppState> {
 
 const LIMIT: i64 = 50;
 
-/// A project's merged activity stream — recent asset creations, comments, and
-/// canon versions, newest first. Read-only over existing tables (no new schema).
+/// A project's merged activity stream — recent asset creations, version events
+/// (regenerate/restore/edit/paint), comments, and canon versions, newest first.
+/// Read-only over existing tables (no new schema).
 async fn feed(
     State(state): State<AppState>,
     user: AuthUser,
@@ -44,9 +45,38 @@ async fn feed(
         events.push(ActivityEvent { kind: "asset".into(), at, summary: format!("{verb} {label}"), asset_id: Some(id) });
     }
 
-    // Comments — with author + a snippet.
+    // Version events (A2/B1/B3) — regenerate / restore / edit / paint, each
+    // with its change note + author. v1 is skipped: the asset-creation event
+    // above already covers "entered the library".
+    let versions: Vec<(Uuid, String, i32, Option<String>, Option<String>, DateTime<Utc>)> =
+        sqlx::query_as(
+            "SELECT v.asset_id, COALESCE(a.name, a.role, a.kind::text) AS label,
+                    v.version, v.change_note,
+                    COALESCE(u.display_name, u.email) AS who, v.created_at
+             FROM asset_versions v
+             JOIN assets a ON a.id = v.asset_id
+             LEFT JOIN users u ON u.id = v.created_by
+             WHERE a.project_id = $1 AND v.version > 1
+             ORDER BY v.created_at DESC LIMIT $2",
+        )
+        .bind(project_id)
+        .bind(LIMIT)
+        .fetch_all(&state.pool)
+        .await?;
+    for (asset_id, label, version, note, who, at) in versions {
+        let who = who.unwrap_or_else(|| "someone".into());
+        let what = note.unwrap_or_else(|| "New version".into());
+        events.push(ActivityEvent {
+            kind: "version".into(),
+            at,
+            summary: format!("{who} — {what} · {label} v{version}"),
+            asset_id: Some(asset_id),
+        });
+    }
+
+    // Comments — with the author (display name when set) + a snippet.
     let comments: Vec<(Uuid, String, Option<String>, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT c.asset_id, c.body, u.email, c.created_at
+        "SELECT c.asset_id, c.body, COALESCE(u.display_name, u.email) AS who, c.created_at
          FROM asset_comments c
          JOIN assets a ON a.id = c.asset_id
          LEFT JOIN users u ON u.id = c.author_id

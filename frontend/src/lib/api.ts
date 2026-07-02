@@ -617,7 +617,7 @@ export const backfillContext = (projectId: string) =>
 
 // ── Activity feed ────────────────────────────────────────────────────────────
 export interface ActivityEvent {
-  kind: 'asset' | 'comment' | 'canon'
+  kind: 'asset' | 'version' | 'comment' | 'canon'
   at: string
   summary: string
   asset_id: string | null

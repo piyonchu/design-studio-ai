@@ -1041,6 +1041,20 @@ async fn save_version_and_style_qa_gate() {
     let (_st, head, _) = send(&router, "GET", &format!("/assets/{base}/file"), Some(&cookie), None).await;
     assert_eq!(head, painted, "head bytes are the client-rendered image");
 
+    // The version event (with its note) surfaces in the project activity feed.
+    let (st, b, _) = send(&router, "GET", &format!("/projects/{pid}/activity"), Some(&cookie), None).await;
+    assert_eq!(st, StatusCode::OK, "activity");
+    let feed: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    let version_event = feed
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["kind"] == "version")
+        .expect("activity feed carries a version event");
+    let summary = version_event["summary"].as_str().unwrap();
+    assert!(summary.contains("Hand-painted test"), "event carries the change note: {summary}");
+    assert!(summary.contains("v2"), "event names the version: {summary}");
+
     // Garbage bytes are rejected without touching history.
     let req = Request::builder()
         .method("POST")
