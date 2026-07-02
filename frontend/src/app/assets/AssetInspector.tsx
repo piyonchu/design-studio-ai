@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon, StarIcon, SparkleIcon } from '@phosphor-icons/react'
+import { XIcon, SpinnerGapIcon, TreeStructureIcon, CheckIcon, TrashIcon, MusicNotesIcon, StarIcon, SparkleIcon, PencilRulerIcon } from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { formatApiError } from '../../lib/api'
 import { CommentThread } from './CommentThread'
 import { VersionHistory } from './VersionHistory'
-import { EditTools } from './EditTools'
+import { EditDialog } from './EditDialog'
 import { Dialog } from '../ui/Dialog'
 import { ErrorBanner } from '../ui/ErrorBanner'
 import { AssetImage } from '../ui/AssetImage'
@@ -39,6 +39,7 @@ export function AssetInspector({
   const [saved, setSaved] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [collections, setCollections] = useState<api.CollectionSummary[]>([])
   const [folders, setFolders] = useState<api.FolderNode[]>([])
   const [selectedCol, setSelectedCol] = useState('')
@@ -56,6 +57,7 @@ export function AssetInspector({
     setSaved(false)
     setConfirming(false)
     setDeleting(false)
+    setEditing(false)
     setSelectedCol('')
     setAdded(null)
     api
@@ -348,14 +350,25 @@ export function AssetInspector({
 
             {detail.kind !== 'audio' && (
               <div className="mb-6 border-t border-white/8 pt-4">
-                <EditTools
-                  asset={detail}
-                  onChanged={(updated) => {
-                    setDetail((d) => (d ? { ...d, ...updated } : d))
-                    onChanged(updated)
-                  }}
-                />
+                <button
+                  onClick={() => setEditing(true)}
+                  className="inline-flex items-center gap-1.5 rounded-[8px] border border-teal/30 bg-teal/10 px-3 py-1.5 text-sm text-teal-bright transition hover:bg-teal/15"
+                >
+                  <PencilRulerIcon size={14} weight="fill" />
+                  Edit
+                </button>
+                <span className="ml-2 text-[11px] text-text-dim">transform · paint · crop · resize — saves a new version</span>
               </div>
+            )}
+            {editing && detail.kind !== 'audio' && (
+              <EditDialog
+                asset={detail}
+                onClose={() => setEditing(false)}
+                onChanged={(updated) => {
+                  setDetail((d) => (d ? { ...d, ...updated } : d))
+                  onChanged(updated)
+                }}
+              />
             )}
 
             <div className="mb-6 border-t border-white/8 pt-4">
