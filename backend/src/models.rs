@@ -417,12 +417,35 @@ pub struct RegenerateAsset {
     pub prompt: Option<String>,
 }
 
+/// What a masked edit should do to the region — each intent takes the pipeline
+/// that's actually good at it (per-intent routing, not one diffusion hammer).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum EditIntent {
+    /// Regenerate the region as something else (diffusion inpaint; needs `prompt`).
+    #[default]
+    Replace,
+    /// Erase the region's content and continue the background (diffusion
+    /// inpaint with a background prompt; no user prompt needed).
+    Remove,
+    /// Change the region's colour toward `color`, keeping shading/texture —
+    /// deterministic math, no model (diffusion is the *wrong* tool for this).
+    Recolor,
+}
+
 /// Masked / inpaint edit (B2): a mask image (data URL or base64 PNG, painted
-/// where the region should change) + what it should become.
+/// where the region should change) + the intent for that region.
 #[derive(Debug, Deserialize)]
 pub struct InpaintRequest {
     pub mask: String,
-    pub prompt: String,
+    /// What the region becomes (required for `replace`; unused otherwise).
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub mode: EditIntent,
+    /// Target colour for `recolor`, `#rrggbb`.
+    #[serde(default)]
+    pub color: Option<String>,
     /// Fold the project's canon style into the edit prompt. Default true; turn
     /// off for off-canon assets or explicit changes the canon would fight
     /// (e.g. a recolor vs a fixed palette rule).

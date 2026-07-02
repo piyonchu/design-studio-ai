@@ -65,30 +65,52 @@ async fn upload_image(base: &str, name: &str, bytes: &[u8]) -> Result<String, Ap
         .ok_or_else(|| AppError::Internal("comfyui upload: response had no name".into()))
 }
 
-/// The Fooocus-inpaint workflow graph (ComfyUI API format), parameterised by the
-/// uploaded base/mask filenames and the edit prompt. Mask: white = edit region.
-fn inpaint_workflow(base_name: &str, mask_name: &str, prompt: &str, seed: u64) -> Value {
+/// The inpaint workflow graph (ComfyUI API format), parameterised by the
+/// uploaded base/mask filenames and the edit prompt + negative conditioning.
+/// Mask: white = edit region.
+///
+/// `harmonize` picks the sampler's model path — validated live on this box:
+/// - `true` → the **Fooocus inpaint patch**: blends with surrounding context.
+///   Perfect for REMOVE (seamless background continuation), but it overrides
+///   the prompt — asking it to paint a new object yields more background.
+/// - `false` → **plain SDXL** inpaint conditioning: prompt-driven. This is the
+///   one that actually paints "a red apple" into the region (REPLACE).
+fn inpaint_workflow(
+    base_name: &str,
+    mask_name: &str,
+    prompt: &str,
+    negative: &str,
+    harmonize: bool,
+    seed: u64,
+) -> Value {
+    let sampler_model = if harmonize { json!(["apply", 0]) } else { json!(["ckpt", 0]) };
     json!({
         "ckpt": {"class_type": "CheckpointLoaderSimple",
                  "inputs": {"ckpt_name": "sd_xl_base_1.0.safetensors"}},
         "pos": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["ckpt", 1]}},
-        "neg": {"class_type": "CLIPTextEncode",
-                "inputs": {"text": "blurry, low quality, artifacts", "clip": ["ckpt", 1]}},
+        "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["ckpt", 1]}},
         "base": {"class_type": "LoadImage", "inputs": {"image": base_name}},
         // The brush mask is opaque (alpha) where the edit should happen, on a
         // transparent background. LoadImage splits alpha into its MASK output as
         // (1 - alpha), so InvertMask restores it to painted = 1.0 = edit region.
         "maskimg": {"class_type": "LoadImage", "inputs": {"image": mask_name}},
         "mask": {"class_type": "InvertMask", "inputs": {"mask": ["maskimg", 1]}},
+        // Grow the brush mask before inpainting (what the Fooocus app itself
+        // does). A tight mask leaves the original object's edge pixels visible
+        // at the border, and the model harmonizes with them — reproducing the
+        // thing the user is trying to change. The margin gives it room to
+        // actually repaint.
+        "grown": {"class_type": "GrowMask", "inputs": {
+            "mask": ["mask", 0], "expand": 16, "tapered_corners": true}},
         "imc": {"class_type": "InpaintModelConditioning", "inputs": {
             "positive": ["pos", 0], "negative": ["neg", 0], "vae": ["ckpt", 2],
-            "pixels": ["base", 0], "mask": ["mask", 0], "noise_mask": true}},
+            "pixels": ["base", 0], "mask": ["grown", 0], "noise_mask": true}},
         "foo": {"class_type": "INPAINT_LoadFooocusInpaint", "inputs": {
             "head": "fooocus_inpaint_head.pth", "patch": "inpaint_v26.fooocus.patch"}},
         "apply": {"class_type": "INPAINT_ApplyFooocusInpaint", "inputs": {
             "model": ["ckpt", 0], "patch": ["foo", 0], "latent": ["imc", 2]}},
         "ks": {"class_type": "KSampler", "inputs": {
-            "model": ["apply", 0], "seed": seed, "steps": 20, "cfg": 7.0,
+            "model": sampler_model, "seed": seed, "steps": 20, "cfg": 7.0,
             "sampler_name": "euler", "scheduler": "normal",
             "positive": ["imc", 0], "negative": ["imc", 1],
             "latent_image": ["imc", 2], "denoise": 1.0}},
@@ -172,14 +194,22 @@ async fn fetch_output(base: &str, filename: &str) -> Result<Vec<u8>, AppError> {
 ///
 // ponytail: sends the whole image; crop-to-mask (§8 speed lever) can wrap this
 // later — isolate the mask bbox, inpaint that, composite back.
-pub async fn inpaint(base: &[u8], mask: &[u8], prompt: &str) -> Result<Vec<u8>, AppError> {
+pub async fn inpaint(
+    base: &[u8],
+    mask: &[u8],
+    prompt: &str,
+    negative: &str,
+    harmonize: bool,
+) -> Result<Vec<u8>, AppError> {
     let url = local_url()
         .ok_or_else(|| AppError::ServiceUnavailable("LOCAL_AI_URL not set".into()))?;
     let tag = Uuid::new_v4().simple().to_string();
     let base_name = upload_image(&url, &format!("cf_base_{tag}.png"), base).await?;
     let mask_name = upload_image(&url, &format!("cf_mask_{tag}.png"), mask).await?;
     let seed = u64::from_le_bytes(Uuid::new_v4().as_bytes()[..8].try_into().unwrap());
-    let pid = submit(&url, inpaint_workflow(&base_name, &mask_name, prompt, seed)).await?;
+    let pid =
+        submit(&url, inpaint_workflow(&base_name, &mask_name, prompt, negative, harmonize, seed))
+            .await?;
     let filename = poll_output(&url, &pid).await?;
     fetch_output(&url, &filename).await
 }
@@ -224,7 +254,9 @@ mod tests {
                 [0, 0, 0, 0]
             }
         });
-        let out = inpaint(&base, &mask, "a glowing red gem").await.expect("inpaint ok");
+        let out = inpaint(&base, &mask, "a glowing red gem", "blurry, low quality", false)
+            .await
+            .expect("inpaint ok");
         assert!(out.len() > 1000, "expected real image bytes, got {}", out.len());
         assert_eq!(&out[1..4], b"PNG", "expected a PNG");
 

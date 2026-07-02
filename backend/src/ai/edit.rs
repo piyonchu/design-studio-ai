@@ -25,12 +25,26 @@ pub fn is_mock() -> bool {
 
 /// Regenerate only the masked region of `base` according to `prompt`. `mask` is
 /// an image whose painted (opaque + bright) pixels mark the region to change.
-/// Returns new full-image PNG bytes.
-pub async fn inpaint(base: &[u8], mask: &[u8], prompt: &str) -> Result<GeneratedImage, AppError> {
-    // Local ComfyUI (Fooocus inpaint) takes precedence when configured — real,
-    // free, on-box. Falls through to the mock for dev/CI/demo when it isn't.
+/// `negative` feeds the model's negative conditioning (what must NOT appear —
+/// the only place negation actually works for CLIP-guided models). `harmonize`
+/// picks context-blending (remove: seamless background) vs prompt-driven
+/// (replace: actually paints the new content). Returns full-image PNG bytes.
+pub async fn inpaint(
+    base: &[u8],
+    mask: &[u8],
+    prompt: &str,
+    negative: &str,
+    harmonize: bool,
+) -> Result<GeneratedImage, AppError> {
+    // Local ComfyUI takes precedence when configured — real, free, on-box.
+    // Falls through to the mock for dev/CI/demo when it isn't.
     if let Some(_url) = crate::ai::comfy::local_url() {
-        let bytes = crate::ai::comfy::inpaint(base, mask, prompt).await?;
+        // "Masked content: fill" — hide the region's original pixels first.
+        // The models condition on the input image, so leaving the object
+        // visible anchors the output to it (verified live: asking for a red
+        // apple over a yellow banana re-rendered the banana).
+        let neutral = crate::edit::neutralize_masked(base, mask)?;
+        let bytes = crate::ai::comfy::inpaint(&neutral, mask, prompt, negative, harmonize).await?;
         return Ok(GeneratedImage { bytes, mime: "image/png".into() });
     }
     if is_mock() {
@@ -133,7 +147,7 @@ mod tests {
         let mut mbuf = Cursor::new(Vec::new());
         image::DynamicImage::ImageRgba8(mask).write_to(&mut mbuf, ImageFormat::Png).unwrap();
 
-        let out = inpaint(&base, &mbuf.into_inner(), "red hat").await.unwrap();
+        let out = inpaint(&base, &mbuf.into_inner(), "red hat", "", false).await.unwrap();
         let res = image::load_from_memory(&out.bytes).unwrap().to_rgba8();
         assert_ne!(res.get_pixel(0, 0).0, [200, 200, 200, 255], "masked pixel changed");
         assert_eq!(res.get_pixel(1, 1).0, [200, 200, 200, 255], "unmasked pixel unchanged");
@@ -144,6 +158,6 @@ mod tests {
         std::env::set_var("EDIT_MOCK", "true");
         let base = png([10, 10, 10, 255], 3, 3);
         let mask = png([0, 0, 0, 0], 3, 3); // nothing painted
-        assert!(inpaint(&base, &mask, "x").await.is_err());
+        assert!(inpaint(&base, &mask, "x", "", false).await.is_err());
     }
 }

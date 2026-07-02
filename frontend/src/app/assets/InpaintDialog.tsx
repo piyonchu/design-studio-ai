@@ -1,15 +1,32 @@
 import { useRef, useState, type PointerEvent as RPointerEvent } from 'react'
-import { XIcon, SpinnerGapIcon, SparkleIcon, EraserIcon, PaintBrushIcon } from '@phosphor-icons/react'
+import {
+  XIcon,
+  SpinnerGapIcon,
+  SparkleIcon,
+  EraserIcon,
+  PaintBrushIcon,
+  SwatchesIcon,
+  BackspaceIcon,
+} from '@phosphor-icons/react'
 import * as api from '../../lib/api'
 import { ApiError } from '../../lib/api'
 import { Dialog } from '../ui/Dialog'
 
+// Per-intent routing: each edit takes the pipeline that's actually good at it.
+// Recolor is deterministic math (diffusion fights colour changes); remove and
+// replace are diffusion inpaint with intent-tuned prompts.
+const MODES: { id: api.EditIntent; label: string; hint: string }[] = [
+  { id: 'replace', label: 'Replace', hint: 'brush the area, describe what it becomes' },
+  { id: 'remove', label: 'Remove', hint: 'brush the object to erase — background fills in' },
+  { id: 'recolor', label: 'Recolor', hint: 'brush the area, pick its new colour — exact & instant' },
+]
+
 /**
- * Masked / inpaint edit (B2). Brush over the region to change, type what it
- * should become, and only that region is regenerated → a new version (the
- * original stays in history). Backed by the `ai::edit` provider seam; free in
- * mock mode. The mask canvas overlays the image at its natural resolution, so
- * the painted pixels map 1:1 to the asset.
+ * Masked region edit (B2). Brush over the region, pick an intent (replace /
+ * remove / recolor) → a new version (the original stays in history). The mask
+ * canvas overlays the image at its natural resolution, so painted pixels map
+ * 1:1 to the asset. Replace/remove run diffusion inpaint (free in mock mode);
+ * recolor is deterministic and always free.
  */
 export function InpaintDialog({
   asset,
@@ -23,7 +40,9 @@ export function InpaintDialog({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
   const [ready, setReady] = useState(false)
+  const [mode, setMode] = useState<api.EditIntent>('replace')
   const [prompt, setPrompt] = useState('')
+  const [color, setColor] = useState('#22aa55')
   const [brush, setBrush] = useState(28)
   const [hasMask, setHasMask] = useState(false)
   const [useCanon, setUseCanon] = useState(true)
@@ -61,21 +80,30 @@ export function InpaintDialog({
     setHasMask(false)
   }
 
+  const canApply = hasMask && (mode === 'replace' ? !!prompt.trim() : mode === 'recolor' ? !!color : true)
+
   async function apply() {
-    if (!hasMask || !prompt.trim() || busy) return
+    if (!canApply || busy) return
     setBusy(true)
     setError(null)
     try {
       const mask = canvasRef.current!.toDataURL('image/png')
-      const updated = await api.inpaintAsset(asset.id, mask, prompt.trim(), useCanon)
+      const updated = await api.inpaintAsset(asset.id, mask, {
+        mode,
+        prompt: mode === 'replace' ? prompt.trim() : undefined,
+        color: mode === 'recolor' ? color : undefined,
+        useCanon,
+      })
       onSaved(updated)
       onClose()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Inpaint failed.')
+      setError(e instanceof ApiError ? e.message : 'Edit failed.')
     } finally {
       setBusy(false)
     }
   }
+
+  const modeHint = MODES.find((m) => m.id === mode)!.hint
 
   return (
     <Dialog
@@ -90,7 +118,7 @@ export function InpaintDialog({
               <PaintBrushIcon size={15} weight="fill" />
             </span>
             <h2 id={titleId} className="text-sm font-medium text-text">Edit a region</h2>
-            <span className="text-xs text-text-dim">· brush the area, describe the change</span>
+            <span className="text-xs text-text-dim">· {modeHint}</span>
             <button
               onClick={onClose}
               aria-label="Close"
@@ -129,6 +157,29 @@ export function InpaintDialog({
           {/* Controls */}
           <div className="border-t border-white/8 p-3">
             {error && <p className="mb-2 text-xs text-rose-300">{error}</p>}
+
+            {/* Intent switch — each mode routes to the pipeline that's good at it */}
+            <div className="mb-2 flex items-center gap-2">
+              <div className="flex items-center rounded-[8px] bg-surface/60 p-0.5">
+                {MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setMode(m.id)}
+                    title={m.hint}
+                    className={`rounded-[6px] px-2.5 py-1 text-xs font-medium transition ${
+                      mode === m.id ? 'bg-teal text-bg' : 'text-text-dim hover:text-text'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              {mode === 'recolor' && (
+                <span className="text-[10px] text-text-dim">free · exact · keeps shading</span>
+              )}
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1.5 text-xs text-text-dim">
                 <PaintBrushIcon size={13} />
@@ -150,36 +201,69 @@ export function InpaintDialog({
                 <EraserIcon size={13} />
                 Clear
               </button>
-              <input
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="What should the region become? (e.g. red hat, remove the extra finger)"
-                aria-label="Describe what the masked region should become"
-                className="min-w-0 flex-1 rounded-[8px] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
-              />
+
+              {mode === 'replace' && (
+                <input
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="What should the region become? (e.g. red hat, wooden shield)"
+                  aria-label="Describe what the masked region should become"
+                  className="min-w-0 flex-1 rounded-[8px] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
+                />
+              )}
+              {mode === 'remove' && (
+                <span className="min-w-0 flex-1 truncate text-xs text-text-dim">
+                  The brushed content is erased and the background continues through it.
+                </span>
+              )}
+              {mode === 'recolor' && (
+                <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-text-dim">
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    aria-label="Target colour"
+                    className="size-8 shrink-0 cursor-pointer rounded-[6px] border border-white/10 bg-surface-2/60 p-0.5"
+                  />
+                  <span className="font-mono text-text">{color}</span>
+                  <span className="truncate text-[10px]">brushed pixels shift to this colour, shading kept</span>
+                </label>
+              )}
+
               <button
                 onClick={apply}
-                disabled={busy || !hasMask || !prompt.trim()}
+                disabled={busy || !canApply}
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] bg-teal px-3.5 py-2 text-sm font-semibold text-bg transition active:translate-y-px disabled:opacity-50"
               >
-                {busy ? <SpinnerGapIcon size={14} className="animate-spin" /> : <SparkleIcon size={14} weight="fill" />}
-                Inpaint
+                {busy ? (
+                  <SpinnerGapIcon size={14} className="animate-spin" />
+                ) : mode === 'recolor' ? (
+                  <SwatchesIcon size={14} weight="fill" />
+                ) : mode === 'remove' ? (
+                  <BackspaceIcon size={14} weight="fill" />
+                ) : (
+                  <SparkleIcon size={14} weight="fill" />
+                )}
+                {mode === 'recolor' ? 'Recolor' : mode === 'remove' ? 'Remove' : 'Inpaint'}
               </button>
             </div>
-            {/* Fold the project's canon style into the edit. Off for off-canon
-                assets or changes the canon would fight (e.g. a recolor). */}
-            <label className="mt-2 flex items-center gap-2 text-xs text-text-dim">
-              <input
-                type="checkbox"
-                checked={useCanon}
-                onChange={(e) => setUseCanon(e.target.checked)}
-                className="size-3.5 accent-teal"
-              />
-              Apply canon style
-              <span className="text-[10px] text-text-dim/70">
-                · matches the project’s look — turn off for off-canon or exact-colour edits
-              </span>
-            </label>
+
+            {/* Canon style only applies to diffusion replace — recolor is exact
+                by definition and remove has no style to match. */}
+            {mode === 'replace' && (
+              <label className="mt-2 flex items-center gap-2 text-xs text-text-dim">
+                <input
+                  type="checkbox"
+                  checked={useCanon}
+                  onChange={(e) => setUseCanon(e.target.checked)}
+                  className="size-3.5 accent-teal"
+                />
+                Apply canon style
+                <span className="text-[10px] text-text-dim/70">
+                  · matches the project’s look — turn off for off-canon edits
+                </span>
+              </label>
+            )}
           </div>
         </>
       )}
