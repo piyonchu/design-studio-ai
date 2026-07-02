@@ -525,10 +525,10 @@ pub struct ReconcileRequest {
 
 // ── Activity feed ────────────────────────────────────────────────────────────
 
-/// One entry in a project's merged activity stream (asset / comment / canon).
+/// One entry in a project's merged activity stream (asset / version / comment / canon).
 #[derive(Debug, Serialize)]
 pub struct ActivityEvent {
-    pub kind: String, // "asset" | "comment" | "canon"
+    pub kind: String, // "asset" | "version" | "comment" | "canon"
     pub at: DateTime<Utc>,
     pub summary: String,
     /// Set for asset + comment events so the UI can jump to the asset.
