@@ -1019,44 +1019,81 @@ async fn inpaint(
     let (project_id, s3_key, mime) = row.ok_or(AppError::NotFound)?;
     auth::require_project_access(&state.pool, project_id, user.id, WorkspaceRole::Editor).await?;
 
-    let prompt = body.prompt.trim();
-    if prompt.is_empty() {
-        return Err(AppError::BadRequest("prompt required".into()));
-    }
-    crate::moderation::check_prompt(prompt)?;
-    // Only real provider edits cost; the mock is free (don't gate dev/demo).
-    if !ai::edit::is_mock() {
-        crate::guardrail::check_can_spend(&state, project_id, 1).await?;
-    }
-
     let (base_bytes, base_mime) = asset_bytes(&state, &s3_key, mime.as_deref()).await?;
     if !is_raster(&base_mime) {
         return Err(AppError::BadRequest("only raster images can be inpainted".into()));
     }
     let mask_bytes = decode_data_url(&body.mask)?;
 
-    // Optionally fold the project's canon (render style, palette, outline…) into
-    // the edit prompt so the region matches the body of work — the same
-    // compile_prompt the generate/derive paths use. Off by request for off-canon
-    // assets or changes the canon would fight (e.g. a recolor vs a palette rule).
-    // The model gets the compiled text; the version keeps the raw prompt.
-    let style_prompt = if body.use_canon {
-        let canon: Option<Value> = sqlx::query_scalar(
-            "SELECT data FROM canon WHERE project_id = $1 ORDER BY version DESC LIMIT 1",
-        )
-        .bind(project_id)
-        .fetch_optional(&state.pool)
-        .await?;
-        let vertical: String = sqlx::query_scalar("SELECT vertical FROM projects WHERE id = $1")
-            .bind(project_id)
-            .fetch_one(&state.pool)
-            .await?;
-        compile_prompt(prompt, canon.as_ref(), &vertical)
-    } else {
-        prompt.to_string()
-    };
+    use crate::models::EditIntent;
+    let (img, raw_prompt, note): (ai::images::GeneratedImage, String, String) = match body.mode {
+        // Pure colour change → deterministic math under the mask. No model, no
+        // prompt, exact result (diffusion fights colour changes — the region's
+        // context + the object's colour prior pull it back to the original).
+        EditIntent::Recolor => {
+            let color = body
+                .color
+                .as_deref()
+                .ok_or_else(|| AppError::BadRequest("color required for recolor".into()))?;
+            let bytes = crate::edit::recolor_masked(&base_bytes, &mask_bytes, color)?;
+            (
+                ai::images::GeneratedImage { bytes, mime: "image/png".into() },
+                format!("recolor to {color}"),
+                format!("Recolored region → {color}"),
+            )
+        }
+        // Erase → diffusion inpaint continuing the background; no user prompt.
+        EditIntent::Remove => {
+            if !ai::edit::is_mock() {
+                crate::guardrail::check_can_spend(&state, project_id, 1).await?;
+            }
+            let prompt = "empty area, seamless continuation of the surrounding background, nothing here";
+            let negative =
+                "object, item, character, figure, text, watermark, blurry, low quality, artifacts";
+            let img = ai::edit::inpaint(&base_bytes, &mask_bytes, prompt, negative, true).await?;
+            (img, "remove".into(), "Removed region content".into())
+        }
+        // Replace → diffusion inpaint from the user's prompt. The prompt stays
+        // REGION-LOCAL: no vertical render hint (that describes a whole asset,
+        // not a patch), and canon *negatives* go to the model's negative
+        // conditioning (CLIP can't parse "must not include X" — naming X in the
+        // positive prompt makes X MORE likely). Canon style joins as a short
+        // clause when `use_canon`.
+        EditIntent::Replace => {
+            let prompt = body
+                .prompt
+                .as_deref()
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+                .ok_or_else(|| AppError::BadRequest("prompt required".into()))?;
+            crate::moderation::check_prompt(prompt)?;
+            if !ai::edit::is_mock() {
+                crate::guardrail::check_can_spend(&state, project_id, 1).await?;
+            }
 
-    let img = ai::edit::inpaint(&base_bytes, &mask_bytes, &style_prompt).await?;
+            let canon: Option<Value> = if body.use_canon {
+                sqlx::query_scalar(
+                    "SELECT data FROM canon WHERE project_id = $1 ORDER BY version DESC LIMIT 1",
+                )
+                .bind(project_id)
+                .fetch_optional(&state.pool)
+                .await?
+            } else {
+                None
+            };
+            let mut positive = prompt.to_string();
+            if let Some(style) = canon.as_ref().and_then(canon_style_text) {
+                positive.push_str(&format!(", {style} style"));
+            }
+            let mut negative = String::from("blurry, low quality, artifacts");
+            if let Some(neg) = canon.as_ref().and_then(canon_negative_text) {
+                negative.push_str(", ");
+                negative.push_str(&neg);
+            }
+            let img = ai::edit::inpaint(&base_bytes, &mask_bytes, &positive, &negative, false).await?;
+            (img, prompt.to_string(), format!("Inpainted: {prompt}"))
+        }
+    };
 
     let new_key = if state.storage.configured() {
         let key = format!("projects/{project_id}/assets/{}", Uuid::new_v4());
@@ -1067,16 +1104,8 @@ async fn inpaint(
         format!("data:{};base64,{b64}", img.mime)
     };
 
-    record_version(
-        &state.pool,
-        id,
-        &new_key,
-        &img.mime,
-        Some(prompt),
-        Some(&format!("Inpainted: {prompt}")),
-        Some(user.id),
-    )
-    .await?;
+    record_version(&state.pool, id, &new_key, &img.mime, Some(&raw_prompt), Some(&note), Some(user.id))
+        .await?;
 
     let asset = sqlx::query_as::<_, Asset>(&format!("SELECT {ASSET_COLS} FROM assets WHERE id = $1"))
         .bind(id)
@@ -1085,6 +1114,35 @@ async fn inpaint(
     crate::mirror::save(project_id, asset.id, &img.mime, &img.bytes);
     ai::embeddings::index_asset_soft(&state.pool, &asset, Some(&img.bytes)).await;
     Ok(Json(with_url(asset)))
+}
+
+/// The canon's style values as one comma-joined clause (for CLIP-style prompts
+/// where instruction phrasing is wasted tokens). None when empty/absent.
+fn canon_style_text(canon: &Value) -> Option<String> {
+    let s = canon
+        .get("style")?
+        .as_object()?
+        .values()
+        .filter_map(Value::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join(", ");
+    (!s.is_empty()).then_some(s)
+}
+
+/// The canon's negatives as a comma-joined list for a model's NEGATIVE
+/// conditioning channel — never folded into the positive prompt (CLIP treats
+/// "must not include X" as a mention of X).
+fn canon_negative_text(canon: &Value) -> Option<String> {
+    let s = canon
+        .get("negative")?
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join(", ");
+    (!s.is_empty()).then_some(s)
 }
 
 /// Decode a `data:[mime];base64,XXXX` URL (or a bare base64 string) to bytes.

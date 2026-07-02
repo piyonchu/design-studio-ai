@@ -818,6 +818,135 @@ async fn inpaint_mock_changes_masked_region_and_versions() {
     assert_eq!(img.get_pixel(7, 0).0, [150, 150, 150, 255], "unmasked pixel unchanged");
 }
 
+/// Per-intent masked edits: `recolor` (deterministic, no model), `remove`
+/// (background inpaint, mock here), and the replace-mode prompt requirement.
+#[tokio::test]
+#[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
+async fn edit_intents_recolor_remove_and_validation() {
+    for (k, v) in [("ASSET_MOCK", "true"), ("EMBED_MOCK", "true"), ("EDIT_MOCK", "true")] {
+        std::env::set_var(k, v);
+    }
+    // Deterministic mock path — never route to a live ComfyUI in this test.
+    std::env::remove_var("LOCAL_AI_URL");
+    std::env::remove_var("S3_BUCKET");
+
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB.into());
+    std::env::set_var("DATABASE_URL", &url);
+    let pool = db::connect().await.expect("connect");
+    db::migrate(&pool).await.expect("migrate");
+    let storage = Arc::new(Storage::from_env().await.expect("inline storage"));
+    let router = app(AppState { pool, storage });
+
+    let email = format!("it-{}@test.local", uuid::Uuid::new_v4());
+    let (_st, _b, cookie) = send(
+        &router,
+        "POST",
+        "/auth/signup",
+        None,
+        Some(&format!("{{\"email\":\"{email}\",\"password\":\"hunter2pass\"}}")),
+    )
+    .await;
+    let cookie = cookie.expect("cookie");
+    let (_st, b, _) = send(&router, "GET", "/workspaces", Some(&cookie), None).await;
+    let ws = field(&b, "id").to_owned();
+    let (_st, b, _) = send(
+        &router,
+        "POST",
+        &format!("/workspaces/{ws}/projects"),
+        Some(&cookie),
+        Some("{\"name\":\"Intents\",\"vertical\":\"game_2d\"}"),
+    )
+    .await;
+    let pid = field(&b, "id").to_owned();
+
+    // A yellow 8×8 "banana" with one shaded pixel.
+    let base_png = {
+        let mut img = image::RgbaImage::from_pixel(8, 8, image::Rgba([230, 200, 40, 255]));
+        img.put_pixel(1, 1, image::Rgba([150, 128, 20, 255]));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(img).write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        buf.into_inner()
+    };
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/projects/{pid}/assets/upload"))
+        .header("content-type", "image/png")
+        .header("cookie", &cookie)
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 50000))))
+        .body(Body::from(base_png))
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    let b = to_bytes(resp.into_body(), usize::MAX).await.unwrap().to_vec();
+    let aid = field(&b, "id").to_owned();
+
+    // Mask covering the left half.
+    let mask_data = {
+        let mut m = image::RgbaImage::from_pixel(8, 8, image::Rgba([0, 0, 0, 0]));
+        for y in 0..8 {
+            for x in 0..4 {
+                m.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
+            }
+        }
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(m).write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        use base64::Engine;
+        format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(buf.into_inner()))
+    };
+
+    // ── recolor: the "make the banana green" case — exact, no model.
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/inpaint"),
+        Some(&cookie),
+        Some(&format!("{{\"mask\":\"{mask_data}\",\"mode\":\"recolor\",\"color\":\"#22aa33\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "recolor");
+    let (_st, head, _) = send(&router, "GET", &format!("/assets/{aid}/file"), Some(&cookie), None).await;
+    let img = image::load_from_memory(&head).unwrap().to_rgba8();
+    let p = img.get_pixel(0, 0);
+    assert!(p[1] > p[0] && p[1] > p[2], "masked pixel is now green: {:?}", p.0);
+    assert_eq!(img.get_pixel(7, 7).0, [230, 200, 40, 255], "unmasked pixel still yellow");
+    let (_st, b, _) = send(&router, "GET", &format!("/assets/{aid}/versions"), Some(&cookie), None).await;
+    let versions: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert_eq!(versions[0]["change_note"], "Recolored region → #22aa33");
+
+    // ── remove: no prompt required; mock path lands a version with the note.
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/inpaint"),
+        Some(&cookie),
+        Some(&format!("{{\"mask\":\"{mask_data}\",\"mode\":\"remove\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "remove");
+    let (_st, b, _) = send(&router, "GET", &format!("/assets/{aid}/versions"), Some(&cookie), None).await;
+    let versions: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert_eq!(versions[0]["change_note"], "Removed region content");
+
+    // ── validation: replace without a prompt / recolor without a colour → 400.
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/inpaint"),
+        Some(&cookie),
+        Some(&format!("{{\"mask\":\"{mask_data}\",\"mode\":\"replace\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "replace needs a prompt");
+    let (st, _b, _) = send(
+        &router,
+        "POST",
+        &format!("/assets/{aid}/inpaint"),
+        Some(&cookie),
+        Some(&format!("{{\"mask\":\"{mask_data}\",\"mode\":\"recolor\"}}")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "recolor needs a colour");
+}
+
 #[tokio::test]
 #[ignore = "needs a Postgres; run via `cargo test -- --ignored` or the CI integration job"]
 async fn generation_conditions_on_an_approved_exemplar() {

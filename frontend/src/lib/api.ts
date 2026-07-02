@@ -426,17 +426,33 @@ export type EditOp =
 export const editAsset = (assetId: string, op: EditOp) =>
   request<Asset>(`/assets/${assetId}/edit`, { method: 'POST', body: JSON.stringify(op) })
 
+/** What a masked edit does to the region — each intent takes the right pipeline. */
+export type EditIntent = 'replace' | 'remove' | 'recolor'
+
 /**
- * Masked / inpaint edit (B2): regenerate only the painted region per `prompt`.
- * `mask` is a PNG data URL, opaque where the region should change. Returns the
- * asset with its new head version. Free in mock mode (`EDIT_MOCK`).
+ * Masked region edit (B2): `mask` is a PNG data URL, opaque where the region
+ * should change. Intents: `replace` regenerates the region per `prompt`
+ * (diffusion); `remove` erases it and continues the background (diffusion, no
+ * prompt); `recolor` shifts the region's colour to `color` keeping shading —
+ * deterministic, instant, free. Returns the asset with its new head version.
  */
-export const inpaintAsset = (assetId: string, mask: string, prompt: string, useCanon = true) =>
+export const inpaintAsset = (
+  assetId: string,
+  mask: string,
+  opts: { mode?: EditIntent; prompt?: string; color?: string; useCanon?: boolean } = {},
+) =>
   request<Asset>(`/assets/${assetId}/inpaint`, {
     method: 'POST',
-    body: JSON.stringify({ mask, prompt, use_canon: useCanon }),
+    body: JSON.stringify({
+      mask,
+      mode: opts.mode ?? 'replace',
+      prompt: opts.prompt,
+      color: opts.color,
+      use_canon: opts.useCanon ?? true,
+    }),
     // A real (local ComfyUI) inpaint is a heavy GPU op — the first call loads
     // SDXL, then ~15-45s per edit. Well past the 30s default, so allow 3 min.
+    // (Recolor is instant, but the shared ceiling is harmless.)
     timeoutMs: 180_000,
   })
 
