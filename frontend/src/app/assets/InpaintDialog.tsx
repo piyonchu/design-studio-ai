@@ -17,8 +17,9 @@ import { Dialog } from '../ui/Dialog'
 // replace are diffusion inpaint with intent-tuned prompts.
 const MODES: { id: api.EditIntent; label: string; hint: string }[] = [
   { id: 'replace', label: 'Replace', hint: 'brush the area, describe what it becomes' },
+  { id: 'refine', label: 'Refine', hint: 'brush the area, describe the adjustment — keeps what’s there' },
   { id: 'remove', label: 'Remove', hint: 'brush the object to erase — background fills in' },
-  { id: 'recolor', label: 'Recolor', hint: 'brush the area, pick its new colour — exact & instant' },
+  { id: 'recolor', label: 'Recolor', hint: 'brush roughly, pick the new colour — exact & instant' },
 ]
 
 /**
@@ -43,6 +44,8 @@ export function InpaintDialog({
   const [mode, setMode] = useState<api.EditIntent>('replace')
   const [prompt, setPrompt] = useState('')
   const [color, setColor] = useState('#22aa55')
+  const [matchColor, setMatchColor] = useState(true)
+  const [strength, setStrength] = useState(0.6)
   const [brush, setBrush] = useState(28)
   const [hasMask, setHasMask] = useState(false)
   const [useCanon, setUseCanon] = useState(true)
@@ -80,7 +83,8 @@ export function InpaintDialog({
     setHasMask(false)
   }
 
-  const canApply = hasMask && (mode === 'replace' ? !!prompt.trim() : mode === 'recolor' ? !!color : true)
+  const needsPrompt = mode === 'replace' || mode === 'refine'
+  const canApply = hasMask && (needsPrompt ? !!prompt.trim() : mode === 'recolor' ? !!color : true)
 
   async function apply() {
     if (!canApply || busy) return
@@ -90,8 +94,10 @@ export function InpaintDialog({
       const mask = canvasRef.current!.toDataURL('image/png')
       const updated = await api.inpaintAsset(asset.id, mask, {
         mode,
-        prompt: mode === 'replace' ? prompt.trim() : undefined,
+        prompt: needsPrompt ? prompt.trim() : undefined,
         color: mode === 'recolor' ? color : undefined,
+        matchColor: mode === 'recolor' ? matchColor : undefined,
+        strength: mode === 'refine' ? strength : undefined,
         useCanon,
       })
       onSaved(updated)
@@ -202,14 +208,38 @@ export function InpaintDialog({
                 Clear
               </button>
 
-              {mode === 'replace' && (
+              {needsPrompt && (
                 <input
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="What should the region become? (e.g. red hat, wooden shield)"
-                  aria-label="Describe what the masked region should become"
+                  placeholder={
+                    mode === 'refine'
+                      ? 'How should the region change? (e.g. make it glow, more battle-worn)'
+                      : 'What should the region become? (e.g. red hat, wooden shield)'
+                  }
+                  aria-label={
+                    mode === 'refine'
+                      ? 'Describe how the masked region should change'
+                      : 'Describe what the masked region should become'
+                  }
                   className="min-w-0 flex-1 rounded-[8px] bg-surface-2/60 px-3 py-2 text-sm text-text outline-none placeholder:text-text-dim focus:ring-1 focus:ring-teal/40"
                 />
+              )}
+              {mode === 'refine' && (
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-text-dim" title="How far the region may depart from the original">
+                  subtle
+                  <input
+                    type="range"
+                    min={0.2}
+                    max={0.9}
+                    step={0.05}
+                    value={strength}
+                    onChange={(e) => setStrength(Number(e.target.value))}
+                    aria-label="Change strength"
+                    className="w-20 accent-teal"
+                  />
+                  bold
+                </label>
               )}
               {mode === 'remove' && (
                 <span className="min-w-0 flex-1 truncate text-xs text-text-dim">
@@ -217,7 +247,7 @@ export function InpaintDialog({
                 </span>
               )}
               {mode === 'recolor' && (
-                <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-text-dim">
+                <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-text-dim">
                   <input
                     type="color"
                     value={color}
@@ -226,8 +256,19 @@ export function InpaintDialog({
                     className="size-8 shrink-0 cursor-pointer rounded-[6px] border border-white/10 bg-surface-2/60 p-0.5"
                   />
                   <span className="font-mono text-text">{color}</span>
-                  <span className="truncate text-[10px]">brushed pixels shift to this colour, shading kept</span>
-                </label>
+                  <label
+                    className="flex shrink-0 items-center gap-1.5"
+                    title="Only pixels matching the brushed area's main colour change — rough brushing is fine; outlines and background survive"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={matchColor}
+                      onChange={(e) => setMatchColor(e.target.checked)}
+                      className="size-3.5 accent-teal"
+                    />
+                    similar colours only
+                  </label>
+                </div>
               )}
 
               <button
@@ -248,9 +289,10 @@ export function InpaintDialog({
               </button>
             </div>
 
-            {/* Canon style only applies to diffusion replace — recolor is exact
-                by definition and remove has no style to match. */}
-            {mode === 'replace' && (
+            {/* Canon style only applies to prompt-driven diffusion (replace/
+                refine) — recolor is exact by definition and remove has no
+                style to match. */}
+            {needsPrompt && (
               <label className="mt-2 flex items-center gap-2 text-xs text-text-dim">
                 <input
                   type="checkbox"

@@ -425,6 +425,10 @@ pub enum EditIntent {
     /// Regenerate the region as something else (diffusion inpaint; needs `prompt`).
     #[default]
     Replace,
+    /// Keep the region's content but modify it per `prompt` ("make it glow",
+    /// "more battle-worn") — diffusion over the ORIGINAL pixels at partial
+    /// `strength`, so structure survives and the prompt steers the change.
+    Refine,
     /// Erase the region's content and continue the background (diffusion
     /// inpaint with a background prompt; no user prompt needed).
     Remove,
@@ -446,6 +450,15 @@ pub struct InpaintRequest {
     /// Target colour for `recolor`, `#rrggbb`.
     #[serde(default)]
     pub color: Option<String>,
+    /// `recolor`: only shift pixels matching the brushed area's dominant colour
+    /// (rough brushing is fine — background/outlines inside the brush survive).
+    /// Default true; off = recolor everything under the brush.
+    #[serde(default = "default_true")]
+    pub match_color: bool,
+    /// `refine`: how much the region may change, 0.15–0.95 (default 0.6).
+    /// Low = subtle adjustment, high = bigger departure from the original.
+    #[serde(default)]
+    pub strength: Option<f32>,
     /// Fold the project's canon style into the edit prompt. Default true; turn
     /// off for off-canon assets or explicit changes the canon would fight
     /// (e.g. a recolor vs a fixed palette rule).
